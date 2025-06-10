@@ -83,7 +83,8 @@ exports.syncFirebaseUser = async (req, res) => {
           name: user.name,
           email: user.email,
           inviteCode: user.inviteCode,
-          recentAmount: user.recentAmount
+          recentAmount: user.recentAmount,
+          balance: user.balance
         }
       });
     } else {
@@ -111,7 +112,8 @@ exports.syncFirebaseUser = async (req, res) => {
           name: newUser.name,
           email: newUser.email,
           inviteCode: newUser.inviteCode,
-          recentAmount: newUser.recentAmount
+          recentAmount: newUser.recentAmount,
+          balance: newUser.balance
         }
       });
     }
@@ -139,6 +141,7 @@ exports.getUserProfile = async (req, res) => {
         inviteCode: user.inviteCode,
         referredBy: user.referredBy,
         recentAmount: user.recentAmount,
+        balance: user.balance,
         createdAt: user.createdAt
       }
     });
