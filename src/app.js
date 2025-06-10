@@ -4,8 +4,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const userRoutes = require('./routes/userRoutes');
-const tokenRoutes = require('./routes/tokenRoutes'); // Import token routes
-// const withdrawalRoutes = require('./routes/withdrawalRoutes'); 
+const tokenRoutes = require('./routes/tokenRoutes');  
+const withdrawRoutes = require('./routes/withdrawRoutes');
 require('dotenv').config();
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://admin:root@cluster0.ye7aj3h.mongodb.net/zero_koin';
@@ -18,8 +18,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use('/api/users', userRoutes);
-app.use('/api/token', tokenRoutes); // Use token routes
-// app.use('/api/withdraw', withdrawalRoutes); // Use withdrawal routes
+app.use('/api/token', tokenRoutes);  
+app.use('/api/withdraw', withdrawRoutes);
 
 mongoose.connect(MONGODB_URI)
   .then(() => {

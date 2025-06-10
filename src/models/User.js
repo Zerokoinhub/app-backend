@@ -14,6 +14,25 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  firebaseUid: {
+    type: String,
+    unique: true,
+    sparse: true
+  },
+  email: {
+    type: String,
+    unique: true,
+    sparse: true
+  },
+  role: {
+    type: String,
+    enum: ['user', 'admin'],
+    default: 'user'
+  },
+  balance: {
+    type: Number,
+    default: 0
+  },
   createdAt: {
     type: Date,
     default: Date.now
