@@ -52,6 +52,7 @@ exports.processReferral = async (req, res) => {
     await newUser.save();
 
     referrer.recentAmount += 50;
+    referrer.balance = (referrer.balance || 0) + 50;
     await referrer.save();
 
     res.status(200).json({ message: 'Referral processed', recentAmount: referrer.recentAmount });
