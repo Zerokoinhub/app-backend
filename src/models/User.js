@@ -36,7 +36,16 @@ const userSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
-  }
+  },
+  sessions: [
+    {
+      sessionNumber: Number,        // 1 to 4
+      unlockedAt: Date,             // When this session was unlocked
+      isClaimed: Boolean            // Has the user claimed this session?
+    }
+  ],
+  lastSessionUnlockAt: Date,        // When the last session was unlocked
+  sessionsResetAt: Date             // When sessions were last reset (UTC midnight)
 });
 
 module.exports = mongoose.model('User', userSchema);

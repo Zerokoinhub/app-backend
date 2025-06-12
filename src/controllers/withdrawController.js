@@ -19,7 +19,13 @@ exports.withdrawCoins = async (req, res) => {
   user.balance -= amount;
   await user.save();
 
-  const withdrawal = await Withdrawal.create({ user: userId, amount, walletAddress, status: 'pending' });
+  const withdrawal = await Withdrawal.create({
+    user: userId,
+    amount,
+    walletAddress,
+    status: 'pending'
+  });
+
   res.status(201).json({ message: 'Withdrawal requested', withdrawal });
 };
 

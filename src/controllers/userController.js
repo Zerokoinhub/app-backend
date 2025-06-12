@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const crypto = require('crypto');
+const { getTodayUTC, getNextSessionUnlockTime, SESSIONS_PER_DAY } = require('../utils/session');
 
 const generateInviteCode = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -149,5 +150,97 @@ exports.getUserProfile = async (req, res) => {
   } catch (error) {
     console.error('Get user profile error:', error.message);
     res.status(500).json({ message: 'Error fetching user profile', error: error.message });
+  }
+};
+
+exports.getUserSessions = async (req, res) => {
+  const userId = req.user._id; // from auth middleware
+  const user = await User.findById(userId);
+
+  // Reset sessions if it's a new UTC day
+  const todayUTC = getTodayUTC();
+  if (!user.sessionsResetAt || user.sessionsResetAt < todayUTC) {
+    user.sessions = [];
+    for (let i = 1; i <= SESSIONS_PER_DAY; i++) {
+      user.sessions.push({
+        sessionNumber: i,
+        unlockedAt: null,
+        isClaimed: false
+      });
+    }
+    user.lastSessionUnlockAt = null;
+    user.sessionsResetAt = todayUTC;
+    await user.save();
+  }
+
+  // Calculate unlock status and next unlock time
+  let nextUnlockTime = null;
+  for (let i = 0; i < SESSIONS_PER_DAY; i++) {
+    if (i === 0) {
+      user.sessions[i].unlockedAt = user.sessions[i].unlockedAt || user.sessionsResetAt;
+    } else if (user.sessions[i - 1].unlockedAt) {
+      const expectedUnlock = getNextSessionUnlockTime(user.sessions[i - 1].unlockedAt);
+      if (!user.sessions[i].unlockedAt && new Date() >= expectedUnlock) {
+        user.sessions[i].unlockedAt = expectedUnlock;
+      }
+      if (!user.sessions[i].unlockedAt) {
+        nextUnlockTime = expectedUnlock;
+        break;
+      }
+    }
+  }
+  await user.save();
+
+  res.json({
+    sessions: user.sessions,
+    nextUnlockTime
+  });
+};
+
+exports.unlockNextSession = async (req, res) => {
+  const userId = req.user._id;
+  const user = await User.findById(userId);
+
+  // Reset sessions if it's a new UTC day
+  const todayUTC = getTodayUTC();
+  if (!user.sessionsResetAt || user.sessionsResetAt < todayUTC) {
+    user.sessions = [];
+    for (let i = 1; i <= SESSIONS_PER_DAY; i++) {
+      user.sessions.push({
+        sessionNumber: i,
+        unlockedAt: null,
+        isClaimed: false
+      });
+    }
+    user.lastSessionUnlockAt = null;
+    user.sessionsResetAt = todayUTC;
+    await user.save();
+  }
+
+  // Find next session to unlock
+  const nextSession = user.sessions.find(s => !s.unlockedAt);
+  if (!nextSession) {
+    return res.status(400).json({ message: "All sessions unlocked for today." });
+  }
+
+  // Check timing
+  if (nextSession.sessionNumber === 1) {
+    nextSession.unlockedAt = todayUTC;
+    user.lastSessionUnlockAt = todayUTC;
+    await user.save();
+    return res.json({ message: "Session 1 unlocked!", nextUnlockTime: getNextSessionUnlockTime(todayUTC) });
+  } else {
+    const prevSession = user.sessions[nextSession.sessionNumber - 2];
+    const expectedUnlock = getNextSessionUnlockTime(prevSession.unlockedAt);
+    if (new Date() < expectedUnlock) {
+      return res.status(400).json({
+        message: "Next session not yet unlocked.",
+        nextUnlockTime: expectedUnlock
+      });
+    }
+    nextSession.unlockedAt = expectedUnlock;
+    user.lastSessionUnlockAt = expectedUnlock;
+    await user.save();
+    return res.json({ message: `Session ${nextSession.sessionNumber} unlocked!`, nextUnlockTime: getNextSessionUnlockTime(expectedUnlock) });
   }
 };
