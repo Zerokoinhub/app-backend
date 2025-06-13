@@ -222,8 +222,6 @@ exports.unlockNextSession = async (req, res) => {
   if (!nextSession) {
     return res.status(400).json({ message: "All sessions unlocked for today." });
   }
-
-  // Check timing
   if (nextSession.sessionNumber === 1) {
     nextSession.unlockedAt = todayUTC;
     user.lastSessionUnlockAt = todayUTC;
