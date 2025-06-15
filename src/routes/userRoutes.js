@@ -9,5 +9,6 @@ router.get('/invite/:inviteCode', userController.getInviteDetails);
 router.post('/referral', userController.processReferral);
 router.get('/sessions', auth, getUserSessions);
 router.post('/unlock', auth, unlockNextSession);
+router.post('/sync', auth, userController.syncFirebaseUser);
 
 module.exports = router;
