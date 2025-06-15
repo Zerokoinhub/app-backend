@@ -41,7 +41,6 @@ const verifyFirebaseToken = async (req, res, next) => {
   }
 };
 
-// Optional middleware - doesn't fail if no token provided
 const optionalFirebaseAuth = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
