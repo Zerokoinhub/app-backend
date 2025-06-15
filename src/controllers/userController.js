@@ -70,13 +70,20 @@ exports.syncFirebaseUser = async (req, res) => {
 
     // Check if user already exists
     let user = await User.findOne({ firebaseUid: uid });
+    console.log('🔍 Existing user check result:', user ? 'Found' : 'Not found');
 
     if (user) {
       // Update existing user data
       console.log('📝 Updating existing user:', user.inviteCode);
       user.name = name || user.name;
       user.email = email || user.email;
-      await user.save();
+      try {
+        await user.save();
+        console.log('✅ User updated successfully');
+      } catch (saveError) {
+        console.error('❌ Error saving updated user:', saveError);
+        throw saveError;
+      }
 
       res.status(200).json({
         message: 'User data updated successfully',
@@ -104,8 +111,13 @@ exports.syncFirebaseUser = async (req, res) => {
         inviteCode: inviteCode
       });
 
-      await newUser.save();
-      console.log('✅ User created successfully with invite code:', inviteCode);
+      try {
+        await newUser.save();
+        console.log('✅ User created successfully with invite code:', inviteCode);
+      } catch (saveError) {
+        console.error('❌ Error saving new user:', saveError);
+        throw saveError;
+      }
 
       res.status(201).json({
         message: 'User created successfully',

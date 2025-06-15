@@ -59,7 +59,7 @@ NlvxmkjuRsvHPkCZHHv9cxfq
   console.error('Firebase initialization error:', error);
 }
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://admin:root@cluster0.ye7aj3h.mongodb.net/zero_koin';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://mstorsulam786:1nkSX6KEOBmdx0ox@cluster0.frhaken.mongodb.net/zero_koin';
 
 const app = express();
 app.use(cors());
