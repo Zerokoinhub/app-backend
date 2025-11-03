@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="default_web_client_id" translatable="false">898085251418-kuc3sj6fa5t2lgjgfddet3d9jsud9796.apps.googleusercontent.com</string>
+    <string name="gcm_defaultSenderId" translatable="false">898085251418</string>
+    <string name="google_api_key" translatable="false">AIzaSyDyMWE4ueqdGT7FSWOFM-2VfmlLHduZQIQ</string>
+    <string name="google_app_id" translatable="false">1:898085251418:android:e5d9e4144565ea7e1f2b63</string>
+    <string name="google_crash_reporting_api_key" translatable="false">AIzaSyDyMWE4ueqdGT7FSWOFM-2VfmlLHduZQIQ</string>
+    <string name="google_storage_bucket" translatable="false">zerokoin-4e239.firebasestorage.app</string>
+    <string name="project_id" translatable="false">zerokoin-4e239</string>
+</resources>

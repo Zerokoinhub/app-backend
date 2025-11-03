@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> 1909d2e4a2a2e8dace19179cbb0cc15607addf20
 # Backend Zero Koin
 
 A professional Node.js backend application with MongoDB integration.
@@ -45,4 +49,26 @@ npm start
 - Environment configuration
 - Error handling middleware
 - Security middleware (helmet, cors)
+<<<<<<< HEAD
 - Request logging (morgan) 
+=======
+- Request logging (morgan) 
+=======
+# zero_koin
+
+A new Flutter project.
+
+## Getting Started
+
+This project is a starting point for a Flutter application.
+
+A few resources to get you started if this is your first Flutter project:
+
+- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
+- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+
+For help getting started with Flutter development, view the
+[online documentation](https://docs.flutter.dev/), which offers tutorials,
+samples, guidance on mobile development, and a full API reference.
+>>>>>>> 8280e64c9aa0cd31a3cf53a3920bcde1ea0e1dca
+>>>>>>> 1909d2e4a2a2e8dace19179cbb0cc15607addf20
