@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 185.02 146.12">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: url(#linear-gradient-4);
+      }
+
+      .cls-2 {
+        fill: url(#linear-gradient-3);
+      }
+
+      .cls-3 {
+        fill: url(#linear-gradient-5);
+      }
+
+      .cls-4 {
+        fill: url(#linear-gradient-8);
+      }
+
+      .cls-5 {
+        fill: url(#linear-gradient-2);
+        fill-rule: evenodd;
+      }
+
+      .cls-6 {
+        fill: url(#linear-gradient-7);
+      }
+
+      .cls-7 {
+        fill: url(#linear-gradient-9);
+      }
+
+      .cls-8 {
+        fill: url(#linear-gradient-6);
+      }
+
+      .cls-9 {
+        fill: url(#linear-gradient);
+      }
+    </style>
+    <linearGradient id="linear-gradient" x1="104.62" y1="89.58" x2="185.02" y2="89.58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3fc4dc"/>
+      <stop offset="1" stop-color="#058aad"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-2" x1="2.1" y1="89.58" x2="125.2" y2="89.58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#00a7bf"/>
+      <stop offset="1" stop-color="#058aad"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-3" x1="0" y1="52.15" x2="35.06" y2="52.15" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="1" stop-color="#00526f"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-4" x1="35.06" y1="52.15" x2="70.13" y2="52.15" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#058aad"/>
+      <stop offset="1" stop-color="#007382"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-5" x1="56.4" y1="139.07" x2="91.46" y2="139.07" gradientTransform="translate(182.48 265.58) rotate(-180)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="1" stop-color="#00526f"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-6" x1="91.46" y1="139.07" x2="126.52" y2="139.07" gradientTransform="translate(182.48 265.58) rotate(-180)" xlink:href="#linear-gradient-4"/>
+    <linearGradient id="linear-gradient-7" x1="17.53" y1="89.58" x2="125.2" y2="89.58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#00384a"/>
+      <stop offset="1" stop-color="#058aad"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-8" x1="121.56" y1="61.35" x2="184.78" y2="61.35" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="1" stop-color="#058aad"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-9" x1="121.56" y1="117.82" x2="185.02" y2="117.82" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="1" stop-color="#058aad"/>
+    </linearGradient>
+  </defs>
+  <polygon class="cls-9" points="184.78 33.11 135.93 89.58 185.02 146.06 153.58 146.06 104.62 90.02 153.1 33.11 184.78 33.11"/>
+  <polygon class="cls-5" points="33.48 146.06 125.2 33.11 96.98 33.11 2.1 146.06 33.48 146.06"/>
+  <g>
+    <polygon class="cls-2" points="0 32.53 35.06 71.77 35.06 32.7 0 32.53"/>
+    <polygon class="cls-1" points="70.13 32.53 35.06 71.77 35.06 32.7 70.13 32.53"/>
+  </g>
+  <g>
+    <polygon class="cls-3" points="126.08 146.12 91.02 106.88 91.02 145.95 126.08 146.12"/>
+    <polygon class="cls-8" points="55.96 146.12 91.02 106.88 91.02 145.95 55.96 146.12"/>
+  </g>
+  <polygon class="cls-6" points="125.2 33.11 33.48 146.06 17.53 146.06 109.93 33.11 125.2 33.11"/>
+  <polygon class="cls-4" points="184.78 33.11 135.93 89.58 121.56 89.58 167.64 33.11 184.78 33.11"/>
+  <polygon class="cls-7" points="185.02 146.06 135.93 89.58 121.56 89.58 169.92 146.06 185.02 146.06"/>
+</svg>
