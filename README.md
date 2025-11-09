@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> 1909d2e4a2a2e8dace19179cbb0cc15607addf20
 # Backend Zero Koin
 
 A professional Node.js backend application with MongoDB integration.
