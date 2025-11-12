@@ -1,14 +1,14 @@
 const admin = require("firebase-admin");
 
-if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-  console.error("FIREBASE_SERVICE_ACCOUNT_KEY is not set!");
+if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
+  console.error("FIREBASE_SERVICE_ACCOUNT is not set!");
   process.exit(1);
 }
 
 let serviceAccount;
 
 try {
-  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
   // Replace literal \n with actual newlines
   serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
 } catch (err) {
