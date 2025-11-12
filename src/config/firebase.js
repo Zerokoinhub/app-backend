@@ -1,24 +1,25 @@
 const admin = require("firebase-admin");
 
-let serviceAccount = {};
-try {
-  if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-    throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY is not set!");
-  }
-  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
-} catch (error) {
-  console.error("Failed to parse Firebase service account key:", error.message);
-  process.exit(1); // Stop app since Firebase is required
-}
-
-try {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
-  console.log("Firebase Admin initialized successfully");
-} catch (error) {
-  console.error("Firebase initialization error:", error);
+if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+  console.error("FIREBASE_SERVICE_ACCOUNT_KEY is not set!");
   process.exit(1);
 }
+
+let serviceAccount;
+
+try {
+  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+  // Replace literal \n with actual newlines
+  serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
+} catch (err) {
+  console.error("Failed to parse Firebase service account key:", err);
+  process.exit(1);
+}
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+console.log("Firebase Admin initialized successfully");
 
 module.exports = { admin };
