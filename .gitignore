@@ -1,77 +1,53 @@
-# Miscellaneous
-*.class
+# Node modules
+node_modules/
+
+# Logs
+logs/
 *.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
-
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
-
-# Symbolication related
-app.*.symbols
-
-# Obfuscation related
-app.*.map.json
-
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
-
-# Additional Android build files
-**/android/**/gradle-wrapper.jar
-**/android/.gradle
-**/android/captures/
-**/android/gradlew
-**/android/gradlew.bat
-**/android/local.properties
-**/android/**/GeneratedPluginRegistrant.java
-
-# Additional build directories
-**/app/intermediates/
-**/app/outputs/
-**/app/build/
-**/android/app/build/
-
-# Flutter build artifacts
-**/flutter_assets/
-**/kernel_blob.bin
-
-# Large binary files
-*.apk
-*.so
-*.aab
-
-# Firebase credentials and sensitive files
-*firebase-adminsdk*.json
-*.json.key
-*service-account*.json
-
+# Environment files
 .env
-/node_modules
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm/
+
+# Optional eslint cache
+.eslintcache
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE / editor settings
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*.bak
+*.orig
+
+# Optional lock files if using pnpm
+pnpm-lock.yaml
+
+# Optional Parcel cache
+.cache/
