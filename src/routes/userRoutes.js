@@ -47,5 +47,7 @@ router.post('/upload-screenshots', verifyFirebaseToken, (req, res, next) => {
 router.post('/fcm-token', verifyFirebaseToken, userController.updateFCMToken);
 router.delete('/fcm-token', verifyFirebaseToken, userController.removeFCMToken);
 router.put('/notification-settings', verifyFirebaseToken, userController.updateNotificationSettings);
-
+//---------------------------------------------------------------
+router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
+//--------------------------------------------------------------
 module.exports = router;
