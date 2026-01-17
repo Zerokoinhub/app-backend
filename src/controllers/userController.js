@@ -673,3 +673,95 @@ exports.uploadScreenshots = async (req, res) => {
     res.status(500).json({ message: 'Error uploading screenshots', error: error.message });
   }
 };
+
+
+//---------------------------------------------------------------------------------------------
+/**
+ * Update user profile (display name and photo)
+ * PUT /api/users/profile
+ */
+exports.updateUserProfile = async (req, res) => {
+  try {
+    console.log("📝 Profile update request received");
+    console.log("   User ID:", req.user.uid);
+    console.log("   Request body:", req.body);
+
+    const { displayName, photoURL } = req.body;
+    const userId = req.user.uid;
+    const userEmail = req.user.email;
+
+    if (!displayName || displayName.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: "Display name is required"
+      });
+    }
+
+    const user = await User.findOne({ firebaseUid: userId });
+    
+    if (!user) {
+      console.log("⚠️ User not found, creating new user...");
+      
+      let inviteCode = generateInviteCode();
+      while (await User.findOne({ inviteCode })) {
+        inviteCode = generateInviteCode();
+      }
+
+      const newUser = new User({
+        firebaseUid: userId,
+        name: displayName.trim(),
+        email: userEmail,
+        inviteCode: inviteCode,
+        photoURL: photoURL || null,
+        balance: 0,
+        calculatorUsage: 0,
+        sessionsCompleted: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      await newUser.save();
+      console.log("✅ New user created with invite code:", inviteCode);
+
+      return res.status(200).json({
+        success: true,
+        message: "Profile created successfully",
+        data: {
+          displayName: displayName.trim(),
+          photoURL: photoURL || null,
+          updatedAt: new Date().toISOString()
+        }
+      });
+    }
+
+    // Update existing user
+    user.name = displayName.trim();
+    if (photoURL !== undefined) {
+      user.photoURL = photoURL;
+    }
+    user.updatedAt = new Date();
+
+    await user.save();
+    console.log("✅ User profile updated successfully");
+
+    res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      data: {
+        displayName: displayName.trim(),
+        photoURL: user.photoURL,
+        updatedAt: user.updatedAt.toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ Error updating profile:", error);
+    console.error("Stack trace:", error.stack);
+    
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+};
