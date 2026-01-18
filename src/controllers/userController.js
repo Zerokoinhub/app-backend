@@ -789,3 +789,87 @@ exports.getUserDetails = async (req, res) => {
     });
   }
 };
+-----------
+  exports.uploadProfilePicture = async (req, res) => {
+  try {
+    console.log('📸 ===== PROFILE PICTURE UPLOAD START =====');
+    console.log('   User ID:', req.user ? req.user.uid : 'No user');
+    console.log('   Request file exists:', !!req.file);
+    console.log('   Request body:', req.body);
+    console.log('   Request headers content-type:', req.headers['content-type']);
+    
+    // Debug Cloudinary config
+    console.log('🔐 Cloudinary Config Check:');
+    console.log('   Cloud Name:', process.env.CLOUDINARY_CLOUD_NAME ? '✅ Set' : '❌ Missing');
+    console.log('   API Key:', process.env.CLOUDINARY_API_KEY ? '✅ Set' : '❌ Missing');
+    console.log('   API Secret:', process.env.CLOUDINARY_API_SECRET ? '✅ Set' : '❌ Missing');
+    
+    if (!req.file) {
+      console.log('❌ ERROR: No file received from Multer');
+      console.log('   Possible reasons:');
+      console.log('   1. Field name mismatch (Flutter sends "image", Multer expects "image")');
+      console.log('   2. File too large (>5MB)');
+      console.log('   3. Invalid file type');
+      return res.status(400).json({ 
+        success: false, 
+        error: 'No file uploaded',
+        expectedField: 'image'
+      });
+    }
+    
+    console.log('✅ File received successfully:');
+    console.log('   Fieldname:', req.file.fieldname);
+    console.log('   Originalname:', req.file.originalname);
+    console.log('   Size:', req.file.size, 'bytes');
+    console.log('   Mimetype:', req.file.mimetype);
+    console.log('   Cloudinary URL:', req.file.path);
+
+    const userId = req.user.uid;
+    console.log('   Looking for user in database...');
+
+    let user = await User.findOne({ firebaseUid: userId });
+    
+    if (!user) {
+      console.log('   User not found, creating new user...');
+      user = new User({
+        firebaseUid: userId,
+        email: req.user.email || '',
+        name: req.user.name || '',
+        photoURL: req.file.path,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    } else {
+      console.log('   User found:', user.email);
+      console.log('   Previous photoURL:', user.photoURL);
+      user.photoURL = req.file.path;
+      user.updatedAt = new Date();
+    }
+
+    console.log('   Saving user to database...');
+    await user.save();
+    console.log('   ✅ User saved successfully');
+
+    console.log('📸 ===== PROFILE PICTURE UPLOAD SUCCESS =====');
+    
+    res.json({
+      success: true,
+      message: 'Profile picture uploaded successfully',
+      photoURL: req.file.path
+    });
+
+  } catch (error) {
+    console.error('❌ ===== PROFILE PICTURE UPLOAD ERROR =====');
+    console.error('   Error Message:', error.message);
+    console.error('   Error Stack:', error.stack);
+    console.error('   Error Full:', error);
+    console.error('   User ID during error:', req.user ? req.user.uid : 'No user');
+    console.error('❌ ===== END ERROR =====');
+    
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to upload profile picture',
+      details: process.env.NODE_ENV === 'production' ? undefined : error.message
+    });
+  }
+};
