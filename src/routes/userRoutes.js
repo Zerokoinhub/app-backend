@@ -101,31 +101,5 @@ router.post('/test-cloudinary-upload',
     }
   }
 );
-// Add this to routes/user.js
-router.post('/test-cloudinary-simple', async (req, res) => {
-  try {
-    console.log('🧪 Testing Cloudinary config...');
-    
-    // Test with a small base64 image
-    const testImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
-    
-    const result = await cloudinary.uploader.upload(testImage, {
-      folder: 'test-uploads'
-    });
-    
-    res.json({
-      success: true,
-      message: 'Cloudinary working!',
-      url: result.secure_url
-    });
-    
-  } catch (error) {
-    console.error('Cloudinary test error:', error.message);
-    res.json({
-      success: false,
-      error: error.message,
-      http_code: error.http_code
-    });
-  }
-});
+
 module.exports = router;
