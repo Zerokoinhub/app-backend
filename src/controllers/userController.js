@@ -1,3 +1,56 @@
+// const express = require('express');
+// const router = express.Router();
+// const userController = require('../controllers/userController');
+// const { getUserSessions, unlockNextSession, getUserProfile } = require('../controllers/userController');
+// const auth = require('../middleware/auth');
+
+// router.post('/register', userController.registerUser);
+// router.get('/invite/:inviteCode', userController.getInviteDetails);
+// router.post('/referral', userController.processReferral);
+// router.get('/sessions', auth, getUserSessions);
+// router.post('/unlock', auth, unlockNextSession);
+// router.post('/sync', auth, userController.syncFirebaseUser);
+// router.get('/profile', auth, getUserProfile);
+
+// module.exports = router;
+
+const express = require('express');
+const router = express.Router();
+const userController = require('../controllers/userController');
+const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
+const { getUserSessions, unlockNextSession, completeSession } = require('../controllers/userController');
+const upload = require('../config/multer');
+
+router.post('/register', userController.registerUser);
+router.get('/invite/:inviteCode', userController.getInviteDetails);
+router.post('/referral', userController.processReferral);
+router.get('/sessions', verifyFirebaseToken, getUserSessions);
+router.post('/unlock', verifyFirebaseToken, unlockNextSession);
+router.post('/complete-session', verifyFirebaseToken, completeSession);
+router.post('/reset-sessions', verifyFirebaseToken, userController.resetUserSessions);
+router.post('/sync', verifyFirebaseToken, userController.syncFirebaseUser);
+router.get('/profile', verifyFirebaseToken, userController.getUserProfile);
+router.put('/wallet-address', verifyFirebaseToken, userController.updateWalletAddress);
+router.get('/count', userController.getUserCount);
+router.put('/calculator-usage', verifyFirebaseToken, userController.incrementCalculatorUsage);
+router.put('/update-balance', verifyFirebaseToken, userController.updateUserBalance);
+router.post('/upload-screenshots', verifyFirebaseToken, (req, res, next) => {
+  console.log('🔍 Route middleware - User:', req.user);
+  console.log('🔍 Route middleware - Headers:', req.headers['content-type']);
+  next();
+}, upload.array('screenshots', 6), (req, res, next) => {
+  console.log('🔍 After multer - Files:', req.files ? req.files.length : 0);
+  next();
+}, userController.uploadScreenshots);
+
+// FCM Token Management Routes
+router.post('/fcm-token', verifyFirebaseToken, userController.updateFCMToken);
+router.delete('/fcm-token', verifyFirebaseToken, userController.removeFCMToken);
+router.put('/notification-settings', verifyFirebaseToken, userController.updateNotificationSettings);
+//---------------------------------------------------------------
+router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
+//--------------------------------------------------------------
+module.exports = router;
 const User = require('../models/User');
 const crypto = require('crypto');
 const { getTodayUTC, getNextSessionUnlockTime, SESSIONS_PER_DAY, SESSION_INTERVAL } = require('../utils/session');
@@ -674,7 +727,6 @@ exports.uploadScreenshots = async (req, res) => {
   }
 };
 
-
 //---------------------------------------------------------------------------------------------
 /**
  * Update user profile (display name and photo)
@@ -762,6 +814,124 @@ exports.updateUserProfile = async (req, res) => {
       success: false,
       message: "Internal server error",
       error: error.message
+    });
+  }
+};
+
+//---------------------------------------------------------------------------------------------
+/**
+ * Upload profile picture
+ * POST /api/users/upload-profile-picture
+ */
+exports.uploadProfilePicture = async (req, res) => {
+  try {
+    console.log('📸 Profile picture upload request received');
+    console.log('   User ID:', req.user?.uid);
+    console.log('   File:', req.file);
+
+    if (!req.file) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'No file uploaded' 
+      });
+    }
+
+    const userId = req.user.uid;
+
+    if (!userId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'User ID is required' 
+      });
+    }
+
+    // Generate file URL
+    const fileUrl = `/uploads/profile-pictures/${req.file.filename}`;
+    const fullUrl = `${req.protocol}://${req.get('host')}${fileUrl}`;
+
+    console.log('   File URL:', fullUrl);
+
+    // Find user by firebaseUid
+    let user = await User.findOne({ firebaseUid: userId });
+
+    if (!user) {
+      console.log('   User not found, creating new user entry...');
+      // If user doesn't exist in our DB yet, create basic entry
+      user = new User({
+        firebaseUid: userId,
+        email: req.user.email || '',
+        name: req.user.name || '',
+        photoURL: fullUrl,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    } else {
+      // Update existing user
+      user.photoURL = fullUrl;
+      user.updatedAt = new Date();
+    }
+
+    await user.save();
+
+    console.log('   ✅ User profile picture updated in database');
+
+    res.json({
+      success: true,
+      message: 'Profile picture uploaded successfully',
+      photoURL: fullUrl,
+      user: {
+        firebaseUid: user.firebaseUid,
+        name: user.name,
+        email: user.email,
+        photoURL: user.photoURL,
+        updatedAt: user.updatedAt
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error uploading profile picture:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to upload profile picture',
+      details: error.message 
+    });
+  }
+};
+
+/**
+ * Get user details (optional endpoint)
+ * GET /api/users/details
+ */
+exports.getUserDetails = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const user = await User.findOne({ firebaseUid: userId });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        firebaseUid: user.firebaseUid,
+        name: user.name,
+        email: user.email,
+        photoURL: user.photoURL,
+        inviteCode: user.inviteCode,
+        balance: user.balance,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error getting user details:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get user details'
     });
   }
 };
