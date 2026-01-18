@@ -68,9 +68,6 @@ router.post('/upload-profile-picture',
 
 // Get user details
 router.get('/details', verifyFirebaseToken, userController.getUserDetails);
-
-module.exports = router;
--------
   // Add this route right before module.exports
 router.post('/test-cloudinary', 
   verifyFirebaseToken,
@@ -102,3 +99,6 @@ router.post('/test-cloudinary',
     }
   }
 );
+
+module.exports = router;
+-------
