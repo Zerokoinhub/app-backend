@@ -6,6 +6,7 @@ const { getName } = require('country-list');
 const NotificationService = require('../services/notificationService');
 const notificationService = new NotificationService();
 const cloudinary = require('cloudinary').v2;
+
 const generateInviteCode = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let code = '';
@@ -695,54 +696,62 @@ exports.updateUserProfile = async (req, res) => {
   }
 };
 
-// ✅ SINGLE uploadProfilePicture function - NO DUPLICATES!
-// ✅ UPDATED: uploadProfilePicture function with direct Cloudinary upload
-// ✅ UPDATED: uploadProfilePicture function with direct Cloudinary upload
+// ✅ SINGLE UPLOAD PROFILE PICTURE FUNCTION (NO DUPLICATES!)
 exports.uploadProfilePicture = async (req, res) => {
-  console.log('📸 Profile picture upload started');
+  console.log('📸 ===== PROFILE PICTURE UPLOAD START =====');
   
   try {
-    // Check if file exists
+    // 1. Log request info
+    console.log('   User ID:', req.user ? req.user.uid : 'No user');
+    console.log('   Request file:', req.file ? '✅ Received' : '❌ Missing');
+    console.log('   File info:', req.file ? {
+      fieldname: req.file.fieldname,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size + ' bytes'
+    } : 'No file');
+    
+    // 2. Validate Cloudinary config
+    console.log('🔐 Cloudinary Config:');
+    console.log('   CLOUDINARY_CLOUD_NAME:', process.env.CLOUDINARY_CLOUD_NAME || '❌ MISSING');
+    console.log('   CLOUDINARY_API_KEY:', process.env.CLOUDINARY_API_KEY ? '✅ SET' : '❌ MISSING');
+    console.log('   CLOUDINARY_API_SECRET:', process.env.CLOUDINARY_API_SECRET ? '✅ SET' : '❌ MISSING');
+    
     if (!req.file) {
-      console.log('⚠️ No file uploaded');
+      console.log('❌ ERROR: No file in request');
       return res.status(400).json({
         success: false,
         error: 'No file uploaded'
       });
     }
-
-    console.log('✅ File received in memory:', {
-      originalname: req.file.originalname,
-      size: req.file.size,
-      mimetype: req.file.mimetype
-    });
-
-    // ✅ IMPORTANT: Check Cloudinary config
-    console.log('🔐 Cloudinary Config Check:');
-    console.log('   Cloud Name:', process.env.CLOUDINARY_CLOUD_NAME ? '✅ Set' : '❌ Missing');
-    console.log('   API Key:', process.env.CLOUDINARY_API_KEY ? '✅ Set' : '❌ Missing');
-    console.log('   API Secret:', process.env.CLOUDINARY_API_SECRET ? '✅ Set' : '❌ Missing');
-
-    // Convert buffer to data URI for Cloudinary
-    const dataURI = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
     
-    console.log('📤 Uploading to Cloudinary...');
+    // 3. Convert to base64
+    console.log('   Converting image to base64...');
+    const base64Image = req.file.buffer.toString('base64');
+    const dataURI = `data:${req.file.mimetype};base64,${base64Image}`;
     
-    // Upload to Cloudinary directly
+    console.log('   Base64 length:', base64Image.length);
+    console.log('   Uploading to Cloudinary...');
+    
+    // 4. Upload to Cloudinary
     const result = await cloudinary.uploader.upload(dataURI, {
       folder: 'profile-pictures',
       allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
       transformation: [{ width: 500, height: 500, crop: 'limit' }]
     });
-
-    console.log('✅ Cloudinary upload success:', result.secure_url);
-
-    // Update user in database
+    
+    console.log('✅ Cloudinary Success:');
+    console.log('   URL:', result.secure_url);
+    console.log('   Public ID:', result.public_id);
+    
+    // 5. Update database
     const userId = req.user.uid;
+    console.log('   Looking for user in DB:', userId);
+    
     let user = await User.findOne({ firebaseUid: userId });
-
+    
     if (!user) {
-      console.log('   Creating new user...');
+      console.log('   User not found, creating new...');
       user = new User({
         firebaseUid: userId,
         email: req.user.email || '',
@@ -752,31 +761,72 @@ exports.uploadProfilePicture = async (req, res) => {
         updatedAt: new Date()
       });
     } else {
-      console.log('   Updating existing user:', user.email);
-      console.log('   Previous photoURL:', user.photoURL);
+      console.log('   User found:', user.email);
+      console.log('   Old photo:', user.photoURL);
       user.photoURL = result.secure_url;
       user.updatedAt = new Date();
     }
-
+    
     await user.save();
     console.log('✅ User saved successfully');
-
+    
+    console.log('📸 ===== UPLOAD SUCCESS =====');
+    
     res.json({
       success: true,
       message: 'Profile picture uploaded successfully',
       photoURL: result.secure_url
     });
-
-  } catch (error) {
-    console.error('❌ Upload error:', error.message);
-    console.error('Stack:', error.stack);
     
-    // Safe error response - won't crash app
+  } catch (error) {
+    console.error('❌ ===== UPLOAD ERROR =====');
+    console.error('   Error Type:', error.constructor.name);
+    console.error('   Error Message:', error.message);
+    console.error('   Error Code:', error.code || 'N/A');
+    console.error('   Error HTTP Code:', error.http_code || 'N/A');
+    console.error('   Stack:', error.stack);
+    console.error('❌ ===== END ERROR =====');
+    
     res.status(500).json({
       success: false,
       error: 'Failed to upload profile picture',
-      details: error.message,
-      safe: true
+      details: process.env.NODE_ENV === 'production' ? undefined : error.message
+    });
+  }
+};
+
+// ✅ ADD THIS FUNCTION - IT'S MISSING!
+exports.getUserDetails = async (req, res) => {
+  try {
+    console.log('🔍 Getting user details for:', req.user.uid);
+    
+    const user = await User.findOne({ firebaseUid: req.user.uid });
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        firebaseUid: user.firebaseUid,
+        name: user.name,
+        email: user.email,
+        photoURL: user.photoURL,
+        inviteCode: user.inviteCode,
+        balance: user.balance,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error getting user details:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get user details'
     });
   }
 };
