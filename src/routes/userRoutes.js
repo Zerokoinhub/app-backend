@@ -3,7 +3,7 @@ const router = express.Router();
 const userController = require('../controllers/userController');
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
 
-// ⚠️ IMPORTANT: Use Cloudinary instead of local storage on Railway
+// ⚠️ IMPORTANT: Cloudinary setup must be here
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
@@ -15,12 +15,12 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// Use Cloudinary storage for profile pictures
+// Cloudinary storage for profile pictures
 const profilePictureStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: 'profile-pictures',
-    allowed_formats: ['jpg', 'jpeg', 'png'],
+    allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
     transformation: [{ width: 500, height: 500, crop: 'limit' }]
   }
 });
@@ -30,7 +30,7 @@ const uploadProfilePicture = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 });
 
-// For screenshots (keep existing)
+// For screenshots (local storage)
 const upload = require('../config/multer');
 
 // User routes
@@ -49,10 +49,7 @@ router.put('/calculator-usage', verifyFirebaseToken, userController.incrementCal
 router.put('/update-balance', verifyFirebaseToken, userController.updateUserBalance);
 
 // Upload screenshots route
-router.post('/upload-screenshots', verifyFirebaseToken, (req, res, next) => {
-  console.log('🔍 Route middleware - User:', req.user);
-  next();
-}, upload.array('screenshots', 6), userController.uploadScreenshots);
+router.post('/upload-screenshots', verifyFirebaseToken, upload.array('screenshots', 6), userController.uploadScreenshots);
 
 // FCM Token Management Routes
 router.post('/fcm-token', verifyFirebaseToken, userController.updateFCMToken);
@@ -62,10 +59,10 @@ router.put('/notification-settings', verifyFirebaseToken, userController.updateN
 // Profile management routes
 router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
 
-// Profile picture upload - USING CLOUDINARY
+// ✅ Profile picture upload - USING CLOUDINARY
 router.post('/upload-profile-picture', 
   verifyFirebaseToken,
-  uploadProfilePicture.single('profilePicture'),
+  uploadProfilePicture.single('profilePicture'), // This must match Flutter field name
   userController.uploadProfilePicture
 );
 
