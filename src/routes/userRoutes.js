@@ -3,7 +3,7 @@ const router = express.Router();
 const userController = require('../controllers/userController');
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
 
-// ⚠️ IMPORTANT: Cloudinary setup must be here
+// Cloudinary setup
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
@@ -59,10 +59,10 @@ router.put('/notification-settings', verifyFirebaseToken, userController.updateN
 // Profile management routes
 router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
 
-// ✅ Profile picture upload - USING CLOUDINARY
+// ✅ PROFILE PICTURE UPLOAD - FIXED FIELD NAME: 'image' (not 'profilePicture')
 router.post('/upload-profile-picture', 
   verifyFirebaseToken,
-  uploadProfilePicture.single('profilePicture'), // This must match Flutter field name
+  uploadProfilePicture.single('image'), // ✅ FIXED: Changed from 'profilePicture' to 'image'
   userController.uploadProfilePicture
 );
 
