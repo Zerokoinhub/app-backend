@@ -817,7 +817,66 @@ exports.updateUserProfile = async (req, res) => {
     });
   }
 };
+exports.uploadProfilePicture = async (req, res) => {
+  try {
+    console.log('📸 Profile picture upload request received');
+    
+    if (!req.file) {
+      console.log('❌ No file uploaded');
+      return res.status(400).json({ 
+        success: false, 
+        error: 'No file uploaded' 
+      });
+    }
 
+    const userId = req.user.uid;
+    console.log('   User ID:', userId);
+    console.log('   Cloudinary file:', req.file);
+
+    // Cloudinary returns secure_url
+    const photoURL = req.file.path; // Cloudinary provides full URL
+    
+    console.log('   Photo URL from Cloudinary:', photoURL);
+
+    // Find or create user
+    let user = await User.findOne({ firebaseUid: userId });
+
+    if (!user) {
+      console.log('   Creating new user entry...');
+      user = new User({
+        firebaseUid: userId,
+        email: req.user.email || '',
+        name: req.user.name || '',
+        photoURL: photoURL,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    } else {
+      console.log('   Updating existing user:', user.email);
+      user.photoURL = photoURL;
+      user.updatedAt = new Date();
+    }
+
+    await user.save();
+    console.log('   ✅ User saved successfully');
+
+    res.json({
+      success: true,
+      message: 'Profile picture uploaded successfully',
+      photoURL: photoURL
+    });
+
+  } catch (error) {
+    console.error('❌ Error in uploadProfilePicture:', error);
+    console.error('   Stack:', error.stack);
+    
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to upload profile picture',
+      details: process.env.NODE_ENV === 'production' ? undefined : error.message
+    });
+  }
+};
 //---------------------------------------------------------------------------------------------
 /**
  * Upload profile picture
