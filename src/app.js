@@ -1,6 +1,5 @@
 // ✅ Load environment variables safely
 const path = require("path");
-const fs = require("fs"); // Add this import
 
 if (process.env.NODE_ENV !== "production") {
   const envPath = path.join(__dirname, "../.env");
@@ -35,33 +34,10 @@ app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ CRITICAL: Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, 'uploads');
-const profilePicturesDir = path.join(uploadsDir, 'profile-pictures');
-
-try {
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-    console.log('✅ Created uploads directory:', uploadsDir);
-  }
-
-  if (!fs.existsSync(profilePicturesDir)) {
-    fs.mkdirSync(profilePicturesDir, { recursive: true });
-    console.log('✅ Created profile-pictures directory:', profilePicturesDir);
-  }
-  
-  // Check write permissions
-  fs.accessSync(uploadsDir, fs.constants.W_OK);
-  fs.accessSync(profilePicturesDir, fs.constants.W_OK);
-  console.log('✅ Write permissions OK for upload directories');
-} catch (error) {
-  console.error('❌ Error creating/checking upload directories:', error);
-  console.error('   Please check file permissions on your server');
-}
-
-// ✅ Add this line to serve static files
+// ⚠️ REMOVED directory creation - Railway has ephemeral filesystem
+// Just serve static files without creating directories
 app.use('/uploads', express.static('uploads'));
-console.log('✅ Serving static files from /uploads');
+console.log('✅ Serving static files from /uploads (if directory exists)');
 
 app.use("/api/users", userRoutes);
 app.use("/api/token", tokenRoutes);
@@ -91,35 +67,14 @@ app.get("/", (req, res) => {
   res.json({ message: "Welcome to the API" });
 });
 
-// ✅ Add better error handling middleware
 app.use((err, req, res, next) => {
-  console.error('🔥 Server Error:', err);
-  console.error('🔥 Error Stack:', err.stack);
-  
-  if (err.name === 'MulterError') {
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'File too large. Maximum size is 5MB' 
-      });
-    }
-    return res.status(400).json({ 
-      success: false, 
-      error: 'File upload error: ' + err.message 
-    });
-  }
-  
-  res.status(500).json({ 
-    success: false, 
-    message: "Internal server error",
-    error: process.env.NODE_ENV === 'production' ? undefined : err.message 
-  });
+  console.error(err.stack);
+  res.status(500).json({ message: "Something went wrong!" });
 });
 
 const server = app
   .listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
-    console.log(`✅ Upload directory ready: ${profilePicturesDir}`);
   })
   .on("error", (err) => {
     if (err.code === "EADDRINUSE") {
