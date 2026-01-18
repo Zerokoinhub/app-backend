@@ -3,18 +3,23 @@ const router = express.Router();
 const userController = require('../controllers/userController');
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
 
-// ✅ FIXED: Simple Cloudinary setup WITHOUT multer-storage-cloudinary
+// ✅ FIXED: Simple Cloudinary setup
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 
-// Configure Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
-});
+// ✅ IMPORTANT: Check if Cloudinary config exists
+if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+  });
+  console.log('✅ Cloudinary configured successfully');
+} else {
+  console.warn('⚠️ Cloudinary environment variables missing!');
+}
 
-// ✅ FIXED: Use memory storage instead of CloudinaryStorage
+// ✅ FIXED: Use memory storage
 const memoryStorage = multer.memoryStorage();
 const uploadProfilePicture = multer({ 
   storage: memoryStorage,
@@ -50,56 +55,53 @@ router.put('/notification-settings', verifyFirebaseToken, userController.updateN
 // Profile management routes
 router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
 
-// ✅ PROFILE PICTURE UPLOAD - USING MEMORY STORAGE
+// ✅ PROFILE PICTURE UPLOAD - WITH ERROR HANDLING
 router.post('/upload-profile-picture', 
   verifyFirebaseToken,
   uploadProfilePicture.single('image'),
   userController.uploadProfilePicture
 );
 
-// Get user details
+// Get user details - ✅ CHECK THIS LINE (likely line 61)
 router.get('/details', verifyFirebaseToken, userController.getUserDetails);
 
-// ✅ TEST ENDPOINT FOR DEBUGGING
-router.post('/test-cloudinary-upload', 
-  verifyFirebaseToken,
-  uploadProfilePicture.single('test'),
-  async (req, res) => {
-    try {
-      console.log('🧪 Test Cloudinary upload');
-      console.log('   File received:', req.file ? 'Yes' : 'No');
-      console.log('   User:', req.user.uid);
-      
-      if (!req.file) {
-        return res.json({
-          test: 'failed',
-          reason: 'No file received'
-        });
-      }
-      
-      // Convert buffer to data URI for Cloudinary
-      const dataURI = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
-      
-      // Upload to Cloudinary
-      const result = await cloudinary.uploader.upload(dataURI, {
-        folder: 'test-uploads'
-      });
-      
-      res.json({
-        test: 'success',
-        url: result.secure_url,
-        message: 'Cloudinary working!'
-      });
-      
-    } catch (error) {
-      console.error('Test error:', error.message);
-      res.json({
-        test: 'error',
-        message: error.message,
-        appStillRunning: true
-      });
+// ✅ TEST ENDPOINTS FOR DEBUGGING
+router.post('/test-cloudinary-simple', async (req, res) => {
+  try {
+    console.log('🧪 Testing Cloudinary...');
+    
+    if (!process.env.CLOUDINARY_CLOUD_NAME) {
+      return res.json({ error: 'CLOUDINARY_CLOUD_NAME missing' });
     }
+    
+    const testImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    
+    const result = await cloudinary.uploader.upload(testImage, {
+      folder: 'test-uploads'
+    });
+    
+    res.json({
+      success: true,
+      message: 'Cloudinary working!',
+      url: result.secure_url
+    });
+    
+  } catch (error) {
+    console.error('Cloudinary test error:', error.message);
+    res.json({
+      success: false,
+      error: error.message
+    });
   }
-);
+});
+
+// ✅ HEALTH CHECK
+router.get('/health', (req, res) => {
+  res.json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    cloudinary: process.env.CLOUDINARY_CLOUD_NAME ? 'configured' : 'missing'
+  });
+});
 
 module.exports = router;
