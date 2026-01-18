@@ -697,6 +697,7 @@ exports.updateUserProfile = async (req, res) => {
 
 // ✅ SINGLE uploadProfilePicture function - NO DUPLICATES!
 // ✅ UPDATED: uploadProfilePicture function with direct Cloudinary upload
+// ✅ UPDATED: uploadProfilePicture function with direct Cloudinary upload
 exports.uploadProfilePicture = async (req, res) => {
   console.log('📸 Profile picture upload started');
   
@@ -779,4 +780,3 @@ exports.uploadProfilePicture = async (req, res) => {
     });
   }
 };
- 
