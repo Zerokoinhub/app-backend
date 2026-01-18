@@ -3,9 +3,8 @@ const router = express.Router();
 const userController = require('../controllers/userController');
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
 
-// Cloudinary setup
+// ✅ FIXED: Simple Cloudinary setup WITHOUT multer-storage-cloudinary
 const cloudinary = require('cloudinary').v2;
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
 
 // Configure Cloudinary
@@ -15,18 +14,10 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// Cloudinary storage for profile pictures
-const profilePictureStorage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'profile-pictures',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
-    transformation: [{ width: 500, height: 500, crop: 'limit' }]
-  }
-});
-
+// ✅ FIXED: Use memory storage instead of CloudinaryStorage
+const memoryStorage = multer.memoryStorage();
 const uploadProfilePicture = multer({ 
-  storage: profilePictureStorage,
+  storage: memoryStorage,
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 });
 
@@ -59,17 +50,56 @@ router.put('/notification-settings', verifyFirebaseToken, userController.updateN
 // Profile management routes
 router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
 
-// ✅ PROFILE PICTURE UPLOAD - FIXED FIELD NAME: 'image' (not 'profilePicture')
+// ✅ PROFILE PICTURE UPLOAD - USING MEMORY STORAGE
 router.post('/upload-profile-picture', 
   verifyFirebaseToken,
-  uploadProfilePicture.single('image'), // ✅ FIXED: Changed from 'profilePicture' to 'image'
+  uploadProfilePicture.single('image'),
   userController.uploadProfilePicture
 );
 
 // Get user details
 router.get('/details', verifyFirebaseToken, userController.getUserDetails);
-  // Add this route right before module.exports
 
+// ✅ TEST ENDPOINT FOR DEBUGGING
+router.post('/test-cloudinary-upload', 
+  verifyFirebaseToken,
+  uploadProfilePicture.single('test'),
+  async (req, res) => {
+    try {
+      console.log('🧪 Test Cloudinary upload');
+      console.log('   File received:', req.file ? 'Yes' : 'No');
+      console.log('   User:', req.user.uid);
+      
+      if (!req.file) {
+        return res.json({
+          test: 'failed',
+          reason: 'No file received'
+        });
+      }
+      
+      // Convert buffer to data URI for Cloudinary
+      const dataURI = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+      
+      // Upload to Cloudinary
+      const result = await cloudinary.uploader.upload(dataURI, {
+        folder: 'test-uploads'
+      });
+      
+      res.json({
+        test: 'success',
+        url: result.secure_url,
+        message: 'Cloudinary working!'
+      });
+      
+    } catch (error) {
+      console.error('Test error:', error.message);
+      res.json({
+        test: 'error',
+        message: error.message,
+        appStillRunning: true
+      });
+    }
+  }
+);
 
 module.exports = router;
--------
