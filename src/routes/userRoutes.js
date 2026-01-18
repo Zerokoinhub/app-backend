@@ -4,40 +4,34 @@ const userController = require('../controllers/userController');
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
 const { getUserSessions, unlockNextSession, completeSession } = require('../controllers/userController');
 
-// Import multer for file uploads
+// ⚠️ IMPORTANT: Use Cloudinary instead of local storage on Railway
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
-const path = require('path');
 
-// Configure multer for profile pictures specifically
-const profilePictureStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/profile-pictures/');
-  },
-  filename: function (req, file, cb) {
-    const userId = req.user?.uid || 'unknown';
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, `profile-${userId}-${uniqueSuffix}${ext}`);
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+// Use Cloudinary storage for profile pictures
+const profilePictureStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'profile-pictures',
+    allowed_formats: ['jpg', 'jpeg', 'png'],
+    transformation: [{ width: 500, height: 500, crop: 'limit' }]
   }
 });
 
-const uploadProfilePicture = multer({
+const uploadProfilePicture = multer({ 
   storage: profilePictureStorage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    
-    if (mimetype && extname) {
-      return cb(null, true);
-    } else {
-      cb(new Error('Only images (jpeg, jpg, png) are allowed'));
-    }
-  }
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 });
 
-// For screenshots (existing - keep as is)
+// For screenshots (keep existing)
 const upload = require('../config/multer');
 
 // User routes
@@ -58,12 +52,8 @@ router.put('/update-balance', verifyFirebaseToken, userController.updateUserBala
 // Upload screenshots route
 router.post('/upload-screenshots', verifyFirebaseToken, (req, res, next) => {
   console.log('🔍 Route middleware - User:', req.user);
-  console.log('🔍 Route middleware - Headers:', req.headers['content-type']);
   next();
-}, upload.array('screenshots', 6), (req, res, next) => {
-  console.log('🔍 After multer - Files:', req.files ? req.files.length : 0);
-  next();
-}, userController.uploadScreenshots);
+}, upload.array('screenshots', 6), userController.uploadScreenshots);
 
 // FCM Token Management Routes
 router.post('/fcm-token', verifyFirebaseToken, userController.updateFCMToken);
@@ -73,14 +63,14 @@ router.put('/notification-settings', verifyFirebaseToken, userController.updateN
 // Profile management routes
 router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
 
-// ADD THIS NEW ROUTE FOR PROFILE PICTURE UPLOAD
+// Profile picture upload - USING CLOUDINARY
 router.post('/upload-profile-picture', 
   verifyFirebaseToken,
   uploadProfilePicture.single('profilePicture'),
   userController.uploadProfilePicture
 );
 
-// Get user details (optional - if needed)
+// Get user details
 router.get('/details', verifyFirebaseToken, userController.getUserDetails);
 
 module.exports = router;
