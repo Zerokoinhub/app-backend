@@ -40,7 +40,8 @@ app.use("/api/withdraw", withdrawRoutes);
 app.use("/api/courses", courseRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/time", timeRoutes);
-
+// Add this line to serve static files
+app.use('/uploads', express.static('uploads'));
 // Connect to MongoDB
 connectDB()
   .then(() => {
