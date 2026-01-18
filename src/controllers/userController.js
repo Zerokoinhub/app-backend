@@ -69,31 +69,23 @@ exports.processReferral = async (req, res) => {
 
 exports.syncFirebaseUser = async (req, res) => {
   try {
-    const { uid, email, name } = req.user; // From Firebase auth middleware
+    const { uid, email, name } = req.user;
     console.log('🔥 Syncing Firebase user:', { uid, email, name });
 
-    // Check if user already exists
     let user = await User.findOne({ firebaseUid: uid });
     console.log('🔍 Existing user check result:', user ? 'Found' : 'Not found');
 
-    // Get IP and country
     const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
     const geo = geoip.lookup(ip);
     const country = geo ? getName(geo.country) : null;
 
     if (user) {
-      // Update existing user data
       console.log('📝 Updating existing user:', user.inviteCode);
       user.name = name || user.name;
       user.email = email || user.email;
       user.country = country;
-      try {
-        await user.save();
-        console.log('✅ User updated successfully');
-      } catch (saveError) {
-        console.error('❌ Error saving updated user:', saveError);
-        throw saveError;
-      }
+      await user.save();
+      console.log('✅ User updated successfully');
 
       res.status(200).json({
         message: 'User data updated successfully',
@@ -109,7 +101,6 @@ exports.syncFirebaseUser = async (req, res) => {
         }
       });
     } else {
-      // Create new user with Firebase data
       console.log('✨ Creating new user for Firebase UID:', uid);
       let inviteCode = generateInviteCode();
       while (await User.findOne({ inviteCode })) {
@@ -124,13 +115,8 @@ exports.syncFirebaseUser = async (req, res) => {
         country
       });
 
-      try {
-        await newUser.save();
-        console.log('✅ User created successfully with invite code:', inviteCode);
-      } catch (saveError) {
-        console.error('❌ Error saving new user:', saveError);
-        throw saveError;
-      }
+      await newUser.save();
+      console.log('✅ User created successfully with invite code:', inviteCode);
 
       res.status(201).json({
         message: 'User created successfully',
@@ -154,7 +140,7 @@ exports.syncFirebaseUser = async (req, res) => {
 
 exports.getUserProfile = async (req, res) => {
   try {
-    const { uid } = req.user; // From Firebase auth middleware
+    const { uid } = req.user;
 
     const user = await User.findOne({ firebaseUid: uid });
     if (!user) {
@@ -182,29 +168,27 @@ exports.getUserProfile = async (req, res) => {
 
 exports.getUserSessions = async (req, res) => {
   try {
-    const { uid } = req.user; // From Firebase auth middleware
+    const { uid } = req.user;
     const user = await User.findOne({ firebaseUid: uid });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Initialize sessions if they don't exist (for new users only)
     if (!user.sessions || user.sessions.length === 0) {
       user.sessions = [];
       for (let i = 1; i <= SESSIONS_PER_DAY; i++) {
         user.sessions.push({
           sessionNumber: i,
-          unlockedAt: i === 1 ? new Date() : null, // First session is always unlocked
+          unlockedAt: i === 1 ? new Date() : null,
           completedAt: null,
           nextUnlockAt: null,
           isClaimed: false,
-          isLocked: i > 1 // Sessions 2-4 start locked
+          isLocked: i > 1
         });
       }
       await user.save();
     }
 
-    // Check and update locked sessions based on countdown
     const now = new Date();
     let sessionsUpdated = false;
 
@@ -230,19 +214,17 @@ exports.getUserSessions = async (req, res) => {
 
 exports.unlockNextSession = async (req, res) => {
   try {
-    const { uid } = req.user; // From Firebase auth middleware
+    const { uid } = req.user;
     const user = await User.findOne({ firebaseUid: uid });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Find the next locked session
     const nextSession = user.sessions.find(session => !session.unlockedAt);
     if (!nextSession) {
       return res.status(400).json({ message: 'No more sessions to unlock' });
     }
 
-    // Unlock the session
     nextSession.unlockedAt = new Date();
     await user.save();
 
@@ -258,7 +240,7 @@ exports.unlockNextSession = async (req, res) => {
 
 exports.completeSession = async (req, res) => {
   try {
-    const { uid } = req.user; // From Firebase auth middleware
+    const { uid } = req.user;
     const { sessionNumber } = req.body;
 
     if (!sessionNumber || sessionNumber < 1 || sessionNumber > 4) {
@@ -270,7 +252,6 @@ exports.completeSession = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Find the session to complete
     const session = user.sessions.find(s => s.sessionNumber === sessionNumber);
     if (!session) {
       return res.status(404).json({ message: 'Session not found' });
@@ -284,27 +265,20 @@ exports.completeSession = async (req, res) => {
       return res.status(400).json({ message: 'Session is already completed' });
     }
 
-    // Mark session as completed
     session.completedAt = new Date();
     session.isClaimed = true;
 
-    // Set up countdown for next session (cyclical: 1->2->3->4->1->2->3->4...)
     let nextSessionNumber;
     if (parseInt(sessionNumber) === 4) {
-      // After session 4, cycle back to session 1 and reset all other sessions
       nextSessionNumber = 1;
-
-      // Reset all sessions to look like first cycle
       user.sessions.forEach(s => {
         if (s.sessionNumber === 1) {
-          // Session 1 will be unlocked after countdown
           s.isLocked = true;
-          s.nextUnlockAt = new Date(Date.now() + SESSION_INTERVAL); // Use configured interval
+          s.nextUnlockAt = new Date(Date.now() + SESSION_INTERVAL);
           s.completedAt = null;
           s.isClaimed = false;
           s.unlockedAt = null;
         } else {
-          // Sessions 2, 3, 4 reset to locked state (not completed)
           s.isLocked = true;
           s.nextUnlockAt = null;
           s.completedAt = null;
@@ -313,16 +287,12 @@ exports.completeSession = async (req, res) => {
         }
       });
     } else {
-      // Normal progression to next session
       nextSessionNumber = sessionNumber + 1;
-
       const nextSession = user.sessions.find(s => s.sessionNumber === nextSessionNumber);
       if (nextSession) {
-        // Set countdown duration
-        const countdownDuration = SESSION_INTERVAL; // Use configured interval
+        const countdownDuration = SESSION_INTERVAL;
         nextSession.isLocked = true;
         nextSession.nextUnlockAt = new Date(Date.now() + countdownDuration);
-        // Reset next session state for cyclical progression
         nextSession.completedAt = null;
         nextSession.isClaimed = false;
         nextSession.unlockedAt = null;
@@ -331,12 +301,11 @@ exports.completeSession = async (req, res) => {
 
     await user.save();
 
-    // Use the same nextSessionNumber variable for response
     const response = {
       message: 'Session completed successfully',
       session: session,
       nextSession: user.sessions.find(s => s.sessionNumber === nextSessionNumber),
-      sessionsReset: parseInt(sessionNumber) === 4 // True when cycling back to session 1
+      sessionsReset: parseInt(sessionNumber) === 4
     };
 
     console.log(`Session ${sessionNumber} completed. Response:`, JSON.stringify(response, null, 2));
@@ -350,24 +319,16 @@ exports.completeSession = async (req, res) => {
 
 exports.updateWalletAddress = async (req, res) => {
   try {
-    const { uid } = req.user; // From Firebase auth middleware
-
-    console.log('📡 Backend: Received request body:', req.body);
-    console.log('📡 Backend: Request headers:', req.headers);
-
+    const { uid } = req.user;
     const { walletType, walletAddress } = req.body;
 
     console.log(`🔄 Updating wallet address for user ${uid}:`, { walletType, walletAddress });
-    console.log('🔍 Backend: walletType type:', typeof walletType, 'value:', walletType);
-    console.log('🔍 Backend: walletAddress type:', typeof walletAddress, 'value:', walletAddress);
 
     if (!walletType || walletAddress === undefined || walletAddress === null) {
       console.log('❌ Backend: Validation failed - missing required fields');
       return res.status(400).json({ message: 'walletType and walletAddress are required' });
     }
 
-    // Validate wallet address format (basic validation for Ethereum addresses)
-    // Allow empty address for disconnection
     if (walletAddress !== '' && (!walletAddress.startsWith('0x') || walletAddress.length !== 42)) {
       return res.status(400).json({ message: 'Invalid wallet address format. Must be a valid Ethereum address (0x...)' });
     }
@@ -377,23 +338,12 @@ exports.updateWalletAddress = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Update the correct wallet address
     if (walletType === 'metamask') {
       user.walletAddresses.metamask = walletAddress;
-      // Update wallet status based on whether address is empty or not
-      if (walletAddress === '') {
-        user.walletStatus = 'Not Connected';
-      } else {
-        user.walletStatus = 'Connected';
-      }
+      user.walletStatus = walletAddress === '' ? 'Not Connected' : 'Connected';
     } else if (walletType === 'trustWallet') {
       user.walletAddresses.trustWallet = walletAddress;
-      // Update wallet status based on whether address is empty or not
-      if (walletAddress === '') {
-        user.walletStatus = 'Not Connected';
-      } else {
-        user.walletStatus = 'Connected';
-      }
+      user.walletStatus = walletAddress === '' ? 'Not Connected' : 'Connected';
     } else {
       return res.status(400).json({ message: 'Invalid walletType' });
     }
@@ -422,22 +372,20 @@ exports.getUserCount = async (req, res) => {
   }
 };
 
-// Manual reset sessions for testing
 exports.resetUserSessions = async (req, res) => {
   try {
-    const { uid } = req.user; // From Firebase auth middleware
+    const { uid } = req.user;
     const user = await User.findOne({ firebaseUid: uid });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Reset all sessions to initial state
     user.sessions.forEach(s => {
       s.completedAt = null;
       s.isClaimed = false;
-      s.isLocked = s.sessionNumber === 1 ? false : true; // Only session 1 is unlocked
+      s.isLocked = s.sessionNumber === 1 ? false : true;
       s.nextUnlockAt = null;
-      s.unlockedAt = s.sessionNumber === 1 ? new Date() : null; // Only session 1 is unlocked
+      s.unlockedAt = s.sessionNumber === 1 ? new Date() : null;
     });
 
     await user.save();
@@ -454,7 +402,7 @@ exports.resetUserSessions = async (req, res) => {
 
 exports.incrementCalculatorUsage = async (req, res) => {
   try {
-    const { uid } = req.user; // From Firebase auth middleware
+    const { uid } = req.user;
     const user = await User.findOne({ firebaseUid: uid });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
@@ -470,7 +418,7 @@ exports.incrementCalculatorUsage = async (req, res) => {
 
 exports.updateUserBalance = async (req, res) => {
   try {
-    const { uid } = req.user; // From Firebase auth middleware
+    const { uid } = req.user;
     const { amount } = req.body;
 
     if (typeof amount !== 'number') {
@@ -495,10 +443,9 @@ exports.updateUserBalance = async (req, res) => {
   }
 };
 
-// FCM Token Management
 exports.updateFCMToken = async (req, res) => {
   try {
-    const { uid } = req.user; // From Firebase auth middleware
+    const { uid } = req.user;
     const { fcmToken, deviceId, platform } = req.body;
 
     if (!fcmToken) {
@@ -510,22 +457,18 @@ exports.updateFCMToken = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Initialize fcmTokens array if it doesn't exist
     if (!user.fcmTokens) {
       user.fcmTokens = [];
     }
 
-    // Check if token already exists
     const existingTokenIndex = user.fcmTokens.findIndex(t => t.token === fcmToken);
 
     if (existingTokenIndex !== -1) {
-      // Update existing token
       user.fcmTokens[existingTokenIndex].lastUsed = new Date();
       user.fcmTokens[existingTokenIndex].isActive = true;
       if (deviceId) user.fcmTokens[existingTokenIndex].deviceId = deviceId;
       if (platform) user.fcmTokens[existingTokenIndex].platform = platform;
     } else {
-      // Add new token
       user.fcmTokens.push({
         token: fcmToken,
         deviceId: deviceId || null,
@@ -536,11 +479,9 @@ exports.updateFCMToken = async (req, res) => {
       });
     }
 
-    // Validate the FCM token
     const validation = await notificationService.validateFCMToken(fcmToken);
     if (!validation.valid) {
       console.warn('Invalid FCM token provided:', fcmToken);
-      // Still save it but mark as inactive
       if (existingTokenIndex !== -1) {
         user.fcmTokens[existingTokenIndex].isActive = false;
       } else {
@@ -562,7 +503,7 @@ exports.updateFCMToken = async (req, res) => {
 
 exports.removeFCMToken = async (req, res) => {
   try {
-    const { uid } = req.user; // From Firebase auth middleware
+    const { uid } = req.user;
     const { fcmToken } = req.body;
 
     if (!fcmToken) {
@@ -578,7 +519,6 @@ exports.removeFCMToken = async (req, res) => {
       return res.status(404).json({ message: 'No FCM tokens found' });
     }
 
-    // Remove the token
     user.fcmTokens = user.fcmTokens.filter(t => t.token !== fcmToken);
     await user.save();
 
@@ -593,7 +533,7 @@ exports.removeFCMToken = async (req, res) => {
 
 exports.updateNotificationSettings = async (req, res) => {
   try {
-    const { uid } = req.user; // From Firebase auth middleware
+    const { uid } = req.user;
     const { sessionUnlocked, pushEnabled } = req.body;
 
     const user = await User.findOne({ firebaseUid: uid });
@@ -601,7 +541,6 @@ exports.updateNotificationSettings = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Initialize notification settings if they don't exist
     if (!user.notificationSettings) {
       user.notificationSettings = {
         sessionUnlocked: true,
@@ -609,7 +548,6 @@ exports.updateNotificationSettings = async (req, res) => {
       };
     }
 
-    // Update settings
     if (typeof sessionUnlocked === 'boolean') {
       user.notificationSettings.sessionUnlocked = sessionUnlocked;
     }
@@ -635,7 +573,7 @@ exports.uploadScreenshots = async (req, res) => {
     console.log('📸 Files received:', req.files ? req.files.length : 0);
     console.log('📸 User from middleware:', req.user);
 
-    const { uid } = req.user; // From Firebase auth middleware
+    const { uid } = req.user;
     const user = await User.findOne({ firebaseUid: uid });
     if (!user) {
       console.log('❌ User not found for uid:', uid);
@@ -649,7 +587,6 @@ exports.uploadScreenshots = async (req, res) => {
       return res.status(400).json({ message: 'No files uploaded' });
     }
 
-    // req.files is an array of uploaded files
     const urls = req.files.map(file => {
       console.log('📸 Processing file:', file.originalname, 'URL:', file.path);
       return file.path;
@@ -657,7 +594,6 @@ exports.uploadScreenshots = async (req, res) => {
 
     console.log('📸 All file URLs:', urls);
 
-    // Limit to 6 screenshots
     user.screenshots = urls.slice(0, 6);
     await user.save();
 
@@ -674,10 +610,6 @@ exports.uploadScreenshots = async (req, res) => {
   }
 };
 
-/**
- * Update user profile (display name and photo)
- * PUT /api/users/profile
- */
 exports.updateUserProfile = async (req, res) => {
   try {
     console.log("📝 Profile update request received");
@@ -732,7 +664,6 @@ exports.updateUserProfile = async (req, res) => {
       });
     }
 
-    // Update existing user
     user.name = displayName.trim();
     if (photoURL !== undefined) {
       user.photoURL = photoURL;
@@ -764,10 +695,7 @@ exports.updateUserProfile = async (req, res) => {
   }
 };
 
-/**
- * Upload profile picture (CLOUDINARY VERSION)
- * POST /api/users/upload-profile-picture
- */
+// ✅ SINGLE uploadProfilePicture function - NO DUPLICATES!
 exports.uploadProfilePicture = async (req, res) => {
   try {
     console.log('📸 Profile picture upload request received');
@@ -789,7 +717,6 @@ exports.uploadProfilePicture = async (req, res) => {
     
     console.log('   Photo URL from Cloudinary:', photoURL);
 
-    // Find or create user
     let user = await User.findOne({ firebaseUid: userId });
 
     if (!user) {
@@ -829,10 +756,6 @@ exports.uploadProfilePicture = async (req, res) => {
   }
 };
 
-/**
- * Get user details (optional endpoint)
- * GET /api/users/details
- */
 exports.getUserDetails = async (req, res) => {
   try {
     const userId = req.user.uid;
