@@ -69,36 +69,7 @@ router.post('/upload-profile-picture',
 // Get user details
 router.get('/details', verifyFirebaseToken, userController.getUserDetails);
   // Add this route right before module.exports
-router.post('/test-cloudinary', 
-  verifyFirebaseToken,
-  uploadProfilePicture.single('test'),
-  async (req, res) => {
-    try {
-      console.log('🧪 Test Cloudinary Upload:');
-      console.log('   File:', req.file);
-      console.log('   User:', req.user.uid);
-      
-      if (!req.file) {
-        return res.status(400).json({ error: 'No file received' });
-      }
-      
-      res.json({
-        success: true,
-        message: 'Cloudinary test successful',
-        url: req.file.path,
-        fileInfo: {
-          fieldname: req.file.fieldname,
-          originalname: req.file.originalname,
-          size: req.file.size,
-          mimetype: req.file.mimetype
-        }
-      });
-    } catch (error) {
-      console.error('Test error:', error);
-      res.status(500).json({ error: error.message });
-    }
-  }
-);
+
 
 module.exports = router;
 -------
