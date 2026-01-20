@@ -15,7 +15,19 @@ const generateInviteCode = () => {
   }
   return code;
 };
-
+// Add this function to check current code version
+exports.debugConfig = async (req, res) => {
+  res.json({
+    timestamp: new Date().toISOString(),
+    version: '1.0.0', // Change this each time you deploy
+    cloudinary: {
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? '✅ Configured' : '❌ Missing',
+      api_key: process.env.CLOUDINARY_API_KEY ? '✅ Configured' : '❌ Missing',
+      api_secret: process.env.CLOUDINARY_API_SECRET ? '✅ Configured (hidden)' : '❌ Missing'
+    },
+    environment: process.env.NODE_ENV || 'development'
+  });
+};
 exports.registerUser = async (req, res) => {
   try {
     let inviteCode = generateInviteCode();
