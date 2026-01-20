@@ -3,8 +3,21 @@ const router = express.Router();
 const timeController = require('../controllers/timeController');
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
 
-// Get server time for synchronization
-router.get('/server-time', verifyFirebaseToken, timeController.getServerTime);
+// ✅ PUBLIC: Get server time for initial synchronization (NO AUTH NEEDED)
+router.get('/server-time', timeController.getServerTime);
+
+// ✅ PUBLIC: Simple health check (NO AUTH)
+router.get('/health', (req, res) => {
+  res.json({
+    status: 'OK',
+    service: 'time-service',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+// ✅ AUTHENTICATED: Get server time with user context
+router.get('/server-time-auth', verifyFirebaseToken, timeController.getServerTime);
 
 // Validate session timing against server time
 router.post('/validate-session', verifyFirebaseToken, timeController.validateSessionTiming);
