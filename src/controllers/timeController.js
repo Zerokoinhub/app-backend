@@ -1,7 +1,38 @@
 const User = require('../models/User');
 
 /**
- * Get server time for time synchronization
+ * PUBLIC: Get server time for initial synchronization
+ * No authentication required - used for initial time sync
+ */
+exports.getServerTimePublic = async (req, res) => {
+  try {
+    const serverTime = new Date();
+    
+    // Log the public time request
+    console.log(`🕐 PUBLIC Server time requested at ${serverTime.toISOString()}`);
+    console.log(`   IP: ${req.ip}, User-Agent: ${req.headers['user-agent']}`);
+    
+    res.status(200).json({
+      serverTime: serverTime.toISOString(),
+      timestamp: serverTime.getTime(),
+      timezone: 'UTC',
+      uptime: process.uptime(),
+      source: 'public-endpoint',
+      message: 'Use /api/time/server-time for authenticated requests'
+    });
+    
+  } catch (error) {
+    console.error('Get server time (public) error:', error.message);
+    res.status(500).json({ 
+      message: 'Error getting server time', 
+      error: error.message,
+      timestamp: new Date().toISOString() // Always include timestamp
+    });
+  }
+};
+
+/**
+ * AUTHENTICATED: Get server time with user context
  * This endpoint provides authoritative server time to detect client-side time manipulation
  */
 exports.getServerTime = async (req, res) => {
@@ -12,18 +43,22 @@ exports.getServerTime = async (req, res) => {
     const { uid } = req.user;
     
     // Log the time request for security monitoring
-    console.log(`🕐 Server time requested by user ${uid} at ${serverTime.toISOString()}`);
+    console.log(`🕐 AUTH Server time requested by user ${uid} at ${serverTime.toISOString()}`);
     
     res.status(200).json({
       serverTime: serverTime.toISOString(),
       timestamp: serverTime.getTime(),
-      timezone: 'UTC'
+      timezone: 'UTC',
+      userId: uid,
+      authenticated: true
     });
+    
   } catch (error) {
-    console.error('Get server time error:', error.message);
+    console.error('Get server time (auth) error:', error.message);
     res.status(500).json({ 
       message: 'Error getting server time', 
-      error: error.message 
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 };
@@ -39,13 +74,17 @@ exports.validateSessionTiming = async (req, res) => {
     
     if (!sessionNumber || !clientTime) {
       return res.status(400).json({ 
-        message: 'sessionNumber and clientTime are required' 
+        message: 'sessionNumber and clientTime are required',
+        timestamp: new Date().toISOString()
       });
     }
     
     const user = await User.findOne({ firebaseUid: uid });
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ 
+        message: 'User not found',
+        timestamp: new Date().toISOString()
+      });
     }
     
     const serverTime = new Date();
@@ -60,7 +99,10 @@ exports.validateSessionTiming = async (req, res) => {
     // Find the session to validate
     const session = user.sessions.find(s => s.sessionNumber === sessionNumber);
     if (!session) {
-      return res.status(404).json({ message: 'Session not found' });
+      return res.status(404).json({ 
+        message: 'Session not found',
+        timestamp: new Date().toISOString()
+      });
     }
     
     // Additional validation: check if session should be unlocked based on server time
@@ -105,11 +147,13 @@ exports.validateSessionTiming = async (req, res) => {
         completedAt: session.completedAt
       }
     });
+    
   } catch (error) {
     console.error('Validate session timing error:', error.message);
     res.status(500).json({ 
       message: 'Error validating session timing', 
-      error: error.message 
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 };
@@ -124,7 +168,10 @@ exports.getTimeValidationStatus = async (req, res) => {
     
     const user = await User.findOne({ firebaseUid: uid });
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ 
+        message: 'User not found',
+        timestamp: new Date().toISOString()
+      });
     }
     
     const serverTime = new Date();
@@ -158,11 +205,13 @@ exports.getTimeValidationStatus = async (req, res) => {
       userSessions: sessionTimingStatus,
       timeValidationEnabled: true
     });
+    
   } catch (error) {
     console.error('Get time validation status error:', error.message);
     res.status(500).json({ 
       message: 'Error getting time validation status', 
-      error: error.message 
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 };
@@ -177,17 +226,26 @@ exports.forceSessionUnlock = async (req, res) => {
     const { sessionNumber } = req.body;
     
     if (!sessionNumber) {
-      return res.status(400).json({ message: 'sessionNumber is required' });
+      return res.status(400).json({ 
+        message: 'sessionNumber is required',
+        timestamp: new Date().toISOString()
+      });
     }
     
     const user = await User.findOne({ firebaseUid: uid });
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ 
+        message: 'User not found',
+        timestamp: new Date().toISOString()
+      });
     }
     
     const session = user.sessions.find(s => s.sessionNumber === sessionNumber);
     if (!session) {
-      return res.status(404).json({ message: 'Session not found' });
+      return res.status(404).json({ 
+        message: 'Session not found',
+        timestamp: new Date().toISOString()
+      });
     }
     
     const serverTime = new Date();
@@ -225,11 +283,13 @@ exports.forceSessionUnlock = async (req, res) => {
           Math.max(0, (session.nextUnlockAt.getTime() - serverTime.getTime()) / 1000) : 0
       });
     }
+    
   } catch (error) {
     console.error('Force session unlock error:', error.message);
     res.status(500).json({ 
       message: 'Error forcing session unlock', 
-      error: error.message 
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 };
