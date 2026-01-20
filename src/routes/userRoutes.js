@@ -7,6 +7,7 @@ const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 
+router.get('/debug-config', userController.debugConfig);
 // ✅ IMPORTANT: Check if Cloudinary config exists
 if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
   cloudinary.config({
