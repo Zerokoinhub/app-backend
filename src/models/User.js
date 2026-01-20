@@ -6,6 +6,11 @@ const userSchema = new mongoose.Schema({
     unique: true,
     required: true
   },
+  // ✅ CRITICAL: Add this field
+  photoURL: {
+    type: String,
+    default: null
+  },
   referredBy: {
     type: String,
     default: null
@@ -126,6 +131,9 @@ const userSchema = new mongoose.Schema({
       default: Date.now
     }
   }]
+}, {
+  // ✅ Add timestamps for better tracking
+  timestamps: true // This adds createdAt and updatedAt automatically
 });
 
 module.exports = mongoose.model('User', userSchema);
