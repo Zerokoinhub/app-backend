@@ -76,110 +76,100 @@ exports.uploadProfilePicture = async (req, res) => {
   console.log('📸 Profile picture upload endpoint called');
   
   try {
-    // Quick validation
+    // 1. Basic validation
     if (!req.user || !req.user.uid) {
-      console.log('❌ No user authenticated');
       return res.status(401).json({ 
         success: false,
-        error: 'Unauthorized',
-        message: 'Please login first'
+        error: 'Unauthorized'
       });
     }
     
     if (!req.file) {
-      console.log('❌ No file uploaded');
       return res.status(400).json({ 
         success: false,
-        error: 'No file',
-        message: 'Please select an image'
+        error: 'No file uploaded'
       });
     }
     
     const userId = req.user.uid;
-    console.log(`✅ User authenticated: ${userId}`);
-    console.log(`📁 File received: ${req.file.originalname} (${req.file.size} bytes)`);
+    console.log(`✅ User: ${userId}, File: ${req.file.originalname}`);
     
-    // Find user in database
+    // 2. Find user
     const user = await User.findOne({ firebaseUid: userId });
-    
-    if (!user) {
-      console.log('❌ User not found in database');
-      return res.status(404).json({
-        success: false,
-        error: 'User not found',
-        message: 'User not found in database'
-      });
-    }
-    
-    console.log('✅ User found in database:', user.email);
-    
-    // Generate a temporary image URL
-    const tempImageUrl = `https://api.dicebear.com/7.x/avatars/svg?seed=${userId}_${Date.now()}&backgroundColor=b6e3f4,c0aede,d1d4f9&backgroundType=gradientLinear`;
-    
-    // Update user with new image URL
-    user.photoURL = tempImageUrl;
-    user.updatedAt = new Date();
-    
-    await user.save();
-    
-    console.log('✅ User profile updated with new photo URL');
-    
-    // Return success response
-    res.json({
-      success: true,
-      message: 'Profile picture updated successfully',
-      data: {
-        photoURL: tempImageUrl,
-        updatedAt: user.updatedAt,
-        note: 'This is a temporary image. Configure Cloudinary for actual uploads.'
-      }
-    });
-    
-  } catch (error) {
-    console.error('❌ Upload error:', error.message);
-    console.error('Stack trace:', error.stack);
-    
-    // Return error without crashing server
-    res.status(500).json({
-      success: false,
-      error: 'Upload failed',
-      message: 'Failed to update profile picture. Please try again.'
-    });
-  }
-};
-
-// ✅ ADD THIS FUNCTION - IT'S MISSING!
-exports.getUserDetails = async (req, res) => {
-  try {
-    console.log('🔍 Getting user details for:', req.user.uid);
-    
-    const user = await User.findOne({ firebaseUid: req.user.uid });
-    
     if (!user) {
       return res.status(404).json({
         success: false,
         error: 'User not found'
       });
     }
-
+    
+    // 3. Check if Cloudinary is configured
+    const hasCloudinaryConfig = process.env.CLOUDINARY_CLOUD_NAME && 
+                               process.env.CLOUDINARY_API_KEY && 
+                               process.env.CLOUDINARY_API_SECRET;
+    
+    let imageUrl;
+    
+    if (hasCloudinaryConfig) {
+      // Upload to Cloudinary
+      console.log('☁️ Uploading to Cloudinary...');
+      
+      // Convert buffer to base64
+      const fileBuffer = req.file.buffer;
+      const fileBase64 = `data:${req.file.mimetype};base64,${fileBuffer.toString('base64')}`;
+      
+      const uploadResult = await cloudinary.uploader.upload(fileBase64, {
+        folder: 'zerokoin/profile-pictures',
+        public_id: `profile_${userId}_${Date.now()}`,
+        overwrite: true,
+        transformation: [
+          { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+          { quality: 'auto', fetch_format: 'auto' }
+        ]
+      });
+      
+      imageUrl = uploadResult.secure_url;
+      console.log('✅ Cloudinary upload successful:', imageUrl);
+      
+    } else {
+      // Fallback: Generate avatar URL
+      console.log('⚠️ Cloudinary not configured, using fallback');
+      imageUrl = `https://api.dicebear.com/7.x/avatars/svg?seed=${userId}_${Date.now()}`;
+    }
+    
+    // 4. Update user
+    user.photoURL = imageUrl;
+    user.updatedAt = new Date();
+    await user.save();
+    
+    // 5. Return response
     res.json({
       success: true,
-      user: {
-        firebaseUid: user.firebaseUid,
-        name: user.name,
-        email: user.email,
-        photoURL: user.photoURL,
-        inviteCode: user.inviteCode,
-        balance: user.balance,
-        createdAt: user.createdAt,
+      message: 'Profile picture updated successfully',
+      data: {
+        photoURL: imageUrl,
         updatedAt: user.updatedAt
       }
     });
+    
   } catch (error) {
-    console.error('❌ Error getting user details:', error);
-    res.status(500).json({
+    console.error('❌ Upload error:', error.message);
+    
+    // Check for specific errors
+    let statusCode = 500;
+    let errorMessage = 'Failed to upload profile picture';
+    
+    if (error.message.includes('File too large')) {
+      statusCode = 400;
+      errorMessage = 'Image is too large. Maximum size is 5MB.';
+    } else if (error.message.includes('not allowed')) {
+      statusCode = 400;
+      errorMessage = 'Invalid file type. Please use JPG, PNG, or WebP.';
+    }
+    
+    res.status(statusCode).json({
       success: false,
-      error: 'Failed to get user details'
+      error: errorMessage
     });
   }
 };
