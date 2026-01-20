@@ -698,109 +698,125 @@ exports.updateUserProfile = async (req, res) => {
 
 // ✅ SINGLE UPLOAD PROFILE PICTURE FUNCTION (NO DUPLICATES!)
 // ✅ PROPER PROFILE PICTURE UPLOAD FUNCTION
+// ✅ COMPLETE WORKING VERSION - WITH CLOUDINARY
 exports.uploadProfilePicture = async (req, res) => {
-  console.log('📸 Profile picture upload called');
+  console.log('📸 [PRODUCTION] Profile picture upload called');
   
   try {
-    // 1. Check if user exists
+    // 1. Authentication check
     if (!req.user || !req.user.uid) {
-      console.log('❌ No user found in request');
+      console.log('❌ No user authenticated');
       return res.status(401).json({ 
-        error: 'Not authenticated',
-        message: 'Please login first' 
+        success: false,
+        error: 'Authentication required'
       });
     }
     
-    console.log('✅ User authenticated:', req.user.uid);
+    const userId = req.user.uid;
+    console.log(`✅ User authenticated: ${userId}`);
     
-    // 2. Check if file exists
+    // 2. File check
     if (!req.file) {
-      console.log('❌ No file uploaded');
+      console.log('❌ No file received');
       return res.status(400).json({ 
-        error: 'No file',
-        message: 'Please select an image' 
+        success: false,
+        error: 'No image file provided'
       });
     }
     
-    console.log('✅ File received:', {
+    console.log('📁 File received:', {
       name: req.file.originalname,
       size: req.file.size,
       type: req.file.mimetype,
-      bufferSize: req.file.buffer ? req.file.buffer.length : 'No buffer'
+      buffer: req.file.buffer ? `${req.file.buffer.length} bytes` : 'No buffer'
     });
     
-    // 3. Check Cloudinary config
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-    const apiKey = process.env.CLOUDINARY_API_KEY;
-    const apiSecret = process.env.CLOUDINARY_API_SECRET;
-    
-    console.log('🔐 Cloudinary check:');
-    console.log('   Cloud Name:', cloudName ? '✅ Set' : '❌ Missing');
-    console.log('   API Key:', apiKey ? '✅ Set' : '❌ Missing');
-    console.log('   API Secret:', apiSecret ? '✅ Set' : '❌ Missing');
-    
-    if (!cloudName || !apiKey || !apiSecret) {
-      console.log('❌ Cloudinary config incomplete');
-      return res.status(500).json({
+    // 3. Validate file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(req.file.mimetype)) {
+      console.log('❌ Invalid file type:', req.file.mimetype);
+      return res.status(400).json({
         success: false,
-        error: 'Configuration error',
-        message: 'Image upload service not configured properly'
+        error: 'Invalid file type. Only images are allowed.'
       });
     }
     
-    // 4. Configure Cloudinary
+    // 4. Check Cloudinary configuration
+    console.log('🔐 Checking Cloudinary config...');
+    console.log('   CLOUDINARY_CLOUD_NAME:', process.env.CLOUDINARY_CLOUD_NAME ? '✅ Present' : '❌ Missing');
+    console.log('   CLOUDINARY_API_KEY:', process.env.CLOUDINARY_API_KEY ? '✅ Present' : '❌ Missing');
+    console.log('   CLOUDINARY_API_SECRET:', process.env.CLOUDINARY_API_SECRET ? '✅ Present' : '❌ Missing');
+    
+    if (!process.env.CLOUDINARY_CLOUD_NAME || 
+        !process.env.CLOUDINARY_API_KEY || 
+        !process.env.CLOUDINARY_API_SECRET) {
+      console.log('❌ Cloudinary credentials incomplete');
+      return res.status(500).json({
+        success: false,
+        error: 'Server configuration error',
+        message: 'Cloudinary service not properly configured'
+      });
+    }
+    
+    // 5. Configure Cloudinary
+    console.log('🔄 Configuring Cloudinary...');
     cloudinary.config({
-      cloud_name: cloudName,
-      api_key: apiKey,
-      api_secret: apiSecret
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+      secure: true
     });
     
-    // 5. Convert buffer to base64
+    // 6. Convert buffer to base64 for Cloudinary
+    console.log('🔄 Converting image to base64...');
     const imageBase64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
     
-    console.log('🔄 Uploading to Cloudinary...');
+    // 7. Upload to Cloudinary
+    console.log('☁️ Uploading to Cloudinary...');
     
-    // 6. Upload to Cloudinary
     const uploadResult = await cloudinary.uploader.upload(imageBase64, {
-      folder: 'zero-koin/profile-pictures',
-      public_id: `profile_${req.user.uid}_${Date.now()}`,
+      folder: 'zero-koin/users',
+      public_id: `profile_${userId}_${Date.now()}`,
       overwrite: true,
       transformation: [
-        { width: 300, height: 300, crop: 'fill', gravity: 'face' },
-        { quality: 'auto', fetch_format: 'auto' }
+        { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+        { quality: 'auto:good' }
       ]
     });
     
-    console.log('✅ Cloudinary upload successful:', uploadResult.secure_url);
+    console.log('✅ Cloudinary upload successful!');
+    console.log('   URL:', uploadResult.secure_url);
+    console.log('   Public ID:', uploadResult.public_id);
+    console.log('   Format:', uploadResult.format);
+    console.log('   Size:', uploadResult.bytes, 'bytes');
     
-    // 7. Find and update user in database
-    const user = await User.findOne({ firebaseUid: req.user.uid });
+    // 8. Find user in database
+    console.log('💾 Updating database...');
+    const user = await User.findOne({ firebaseUid: userId });
     
     if (!user) {
       console.log('❌ User not found in database');
       return res.status(404).json({
         success: false,
-        error: 'User not found',
-        message: 'User not found in database'
+        error: 'User not found'
       });
     }
     
-    // 8. Save the new photo URL
+    // 9. Save the URL to database
     const previousPhotoURL = user.photoURL;
     user.photoURL = uploadResult.secure_url;
     user.updatedAt = new Date();
     
     await user.save();
     
-    console.log('✅ User profile picture updated in database');
+    console.log('✅ Database updated successfully');
     
-    // 9. Return success response
+    // 10. Return success response
     res.json({
       success: true,
       message: 'Profile picture uploaded successfully',
       data: {
         photoURL: uploadResult.secure_url,
-        previousPhotoURL: previousPhotoURL,
         publicId: uploadResult.public_id,
         format: uploadResult.format,
         bytes: uploadResult.bytes,
@@ -811,24 +827,29 @@ exports.uploadProfilePicture = async (req, res) => {
     });
     
   } catch (error) {
-    console.log('❌ Upload error:', error.message);
-    console.error('Full error stack:', error);
+    console.error('❌ Upload failed:', error.message);
+    console.error('Full error:', error);
     
-    // Provide specific error messages
+    // Provide helpful error messages
     let errorMessage = 'Failed to upload image';
+    let errorCode = 500;
+    
     if (error.message.includes('Invalid Credentials')) {
-      errorMessage = 'Cloudinary credentials are invalid';
+      errorMessage = 'Cloudinary credentials are invalid. Please check your API keys.';
     } else if (error.message.includes('File size too large')) {
-      errorMessage = 'Image size is too large (max 5MB)';
+      errorMessage = 'Image is too large. Maximum size is 5MB.';
+      errorCode = 400;
     } else if (error.message.includes('timeout')) {
-      errorMessage = 'Upload timed out. Please try again';
+      errorMessage = 'Upload timed out. Please try again.';
+    } else if (error.http_code === 401) {
+      errorMessage = 'Cloudinary authentication failed. Check your API credentials.';
     }
     
-    res.status(500).json({
+    res.status(errorCode).json({
       success: false,
       error: 'Upload failed',
       message: errorMessage,
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      details: process.env.NODE_ENV === 'production' ? undefined : error.message
     });
   }
 };
