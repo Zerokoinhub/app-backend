@@ -21,7 +21,19 @@ const generateInviteCode = () => {
   }
   return code;
 };
-
+// Check this function exists and has no errors
+exports.healthCheck = async (req, res) => {
+  try {
+    res.status(200).json({
+      status: 'healthy',
+      timestamp: new Date(),
+      service: 'zero-koin-backend'
+    });
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+};
 exports.registerUser = async (req, res) => {
   try {
     let inviteCode = generateInviteCode();
