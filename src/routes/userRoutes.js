@@ -32,7 +32,20 @@ const upload = require('../config/multer');
 router.get('/health', userController.healthCheck);
 router.get('/debug-config', userController.debugConfig);
 router.post('/register', userController.registerUser);
-router.get('/invite/:inviteCode', userController.getInviteDetails);
+
+// ✅ FIXED: Either remove this route or add the function to controller
+// Option 1: Remove the route (if you don't need it)
+// router.get('/invite/:inviteCode', userController.getInviteDetails); // ❌ REMOVE THIS
+
+// Option 2: Add a simple placeholder function
+router.get('/invite/:inviteCode', (req, res) => { // ✅ TEMPORARY FIX
+  res.status(501).json({
+    success: false,
+    message: 'Invite system not yet implemented',
+    inviteCode: req.params.inviteCode
+  });
+});
+
 router.post('/referral', userController.processReferral);
 router.get('/count', userController.getUserCount);
 
