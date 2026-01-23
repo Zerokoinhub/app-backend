@@ -1,4 +1,10 @@
-// userRoutes.js - COMPLETE REPLACEMENT
+// ADD THESE LINES AT THE VERY TOP
+console.log('🔍 DEBUG: Checking line 33...');
+console.log('🔍 Current file path:', __filename);
+console.log('🔍 Loading at:', new Date().toISOString());
+
+const express = require('express');
+const router = express.Router();// userRoutes.js - COMPLETE REPLACEMENT
 const express = require('express');
 const router = express.Router();
 
