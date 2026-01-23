@@ -420,5 +420,77 @@ router.post('/test-update', verifyFirebaseToken, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
+// Add to your userRoutes.js
+router.get('/admin/debug-user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    console.log(`🔍 Debugging user: ${userId}`);
+    
+    // Try different ways to find the user
+    const userById = await User.findById(userId);
+    const userByFirebaseUid = await User.findOne({ firebaseUid: userId });
+    const userByEmail = await User.findOne({ email: userId });
+    
+    console.log('📊 Database query results:');
+    console.log('   By MongoDB _id:', userById ? 'Found' : 'Not found');
+    console.log('   By firebaseUid:', userByFirebaseUid ? 'Found' : 'Not found');
+    console.log('   By email:', userByEmail ? 'Found' : 'Not found');
+    
+    // Get all users to see structure
+    const allUsers = await User.find({}).limit(5).select('name email photoURL firebaseUid');
+    console.log('📋 First 5 users in database:');
+    allUsers.forEach((user, index) => {
+      console.log(`   ${index + 1}. ${user.name} (${user.email})`);
+      console.log(`      photoURL: ${user.photoURL}`);
+      console.log(`      firebaseUid: ${user.firebaseUid}`);
+    });
+    
+    const user = userById || userByFirebaseUid || userByEmail;
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+        searchMethods: {
+          byId: !!userById,
+          byFirebaseUid: !!userByFirebaseUid,
+          byEmail: !!userByEmail
+        }
+      });
+    }
+    
+    res.json({
+      success: true,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        photoURL: user.photoURL,
+        photoURLExists: !!user.photoURL,
+        photoURLType: user.photoURL ? 
+          (user.photoURL.includes('firebasestorage') ? 'Firebase Storage' : 
+           user.photoURL.includes('cloudinary') ? 'Cloudinary' : 
+           'Other') : 'None',
+        firebaseUid: user.firebaseUid,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
+      },
+      allUsers: allUsers.map(u => ({
+        _id: u._id,
+        name: u.name,
+        email: u.email,
+        photoURL: u.photoURL,
+        firebaseUid: u.firebaseUid
+      }))
+    });
+    
+  } catch (error) {
+    console.error('Debug error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 module.exports = router;
