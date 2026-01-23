@@ -1,31 +1,30 @@
-// ADD THESE LINES AT THE VERY TOP
-console.log('🔍 DEBUG: Checking line 33...');
-console.log('🔍 Current file path:', __filename);
-console.log('🔍 Loading at:', new Date().toISOString());
-
-const express = require('express');
-const router = express.Router();// userRoutes.js - COMPLETE REPLACEMENT
+// userRoutes.js - CORRECT VERSION
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 
-console.log('🚨 EMERGENCY FIX: Loading NEW userRoutes.js at', new Date().toISOString());
+console.log('✅ userRoutes.js loading successfully');
 
-// ============ SIMPLE PUBLIC ROUTES ============
+// ============ SIMPLE ROUTES ============
 router.get('/health', (req, res) => {
-  console.log('✅ Health check working');
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    message: 'Backend is alive with emergency fix'
+    message: 'Backend is alive' 
   });
 });
 
-router.get('/count', (req, res) => {
-  res.json({ success: true, count: 0 });
+// ✅ LINE 33 FIXED - This should be around line 15-20 now
+router.get('/invite/:inviteCode', (req, res) => {
+  console.log('✅ Invite route called with code:', req.params.inviteCode);
+  res.json({ 
+    success: true, 
+    inviteCode: req.params.inviteCode,
+    message: 'Invite system placeholder' 
+  });
 });
 
-// ============ SIMPLE FILE UPLOAD ============
-const multer = require('multer');
+// ============ FILE UPLOAD ============
 const upload = multer({ 
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }
@@ -34,8 +33,6 @@ const upload = multer({
 router.post('/upload-profile-picture', 
   upload.single('image'),
   (req, res) => {
-    console.log('📤 Upload endpoint called');
-    
     if (!req.file) {
       return res.status(400).json({ 
         success: false, 
@@ -55,18 +52,4 @@ router.post('/upload-profile-picture',
   }
 );
 
-// ============ PLACEHOLDER FOR OTHER ROUTES ============
-router.get('/sessions', (req, res) => {
-  res.json({ success: true, sessions: [] });
-});
-
-router.get('/profile', (req, res) => {
-  res.json({ success: true, profile: {} });
-});
-
-router.post('/sync', (req, res) => {
-  res.json({ success: true, message: 'Sync placeholder' });
-});
-
-console.log('✅ userRoutes.js setup complete - NO LINE 33 ERROR');
 module.exports = router;
