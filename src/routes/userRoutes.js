@@ -1,56 +1,9 @@
-const express = require('express');
-const router = express.Router();
-const multer = require('multer');
-const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
+// Add MongoDB connection at the top
+const mongoose = require('mongoose');
+const User = require('../models/User'); // You need a User model
 
-console.log('✅ userRoutes.js loading with ALL routes');
-
-// ============ PUBLIC ROUTES ============
-router.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    message: 'Backend is alive' 
-  });
-});
-
-router.get('/count', (req, res) => {
-  res.json({ success: true, count: 1 });
-});
-
-// Fixed line 33
-router.get('/invite/:inviteCode', (req, res) => {
-  res.json({ 
-    success: true, 
-    inviteCode: req.params.inviteCode,
-    message: 'Invite system placeholder' 
-  });
-});
-
-// ============ AUTHENTICATED ROUTES ============
-router.get('/sessions', verifyFirebaseToken, (req, res) => {
-  res.json({ 
-    success: true, 
-    sessions: [],
-    message: 'Sessions placeholder',
-    user: req.user.uid
-  });
-});
-
-router.get('/profile', verifyFirebaseToken, (req, res) => {
-  res.json({ 
-    success: true, 
-    profile: {
-      uid: req.user.uid,
-      displayName: 'User',
-      email: req.user.email || 'user@example.com',
-      profilePicture: null
-    }
-  });
-});
-
-// ✅ ADD THIS: PUT profile endpoint (MISSING ROUTE)
-router.put('/profile', verifyFirebaseToken, (req, res) => {
+// ============ UPDATE PROFILE ROUTE ============
+router.put('/profile', verifyFirebaseToken, async (req, res) => {
   console.log('✅ PUT /profile called with data:', req.body);
   
   if (!req.body || Object.keys(req.body).length === 0) {
@@ -60,51 +13,68 @@ router.put('/profile', verifyFirebaseToken, (req, res) => {
     });
   }
   
-  res.json({
-    success: true,
-    message: 'Profile updated successfully',
-    updatedFields: req.body,
-    user: req.user.uid,
-    timestamp: new Date().toISOString()
-  });
-});
-
-router.post('/sync', verifyFirebaseToken, (req, res) => {
-  res.json({ 
-    success: true, 
-    message: 'User synced successfully',
-    user: req.user.uid
-  });
-});
-
-// ============ FILE UPLOAD ============
-const upload = multer({ 
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }
-});
-
-router.post('/upload-profile-picture', 
-  verifyFirebaseToken,
-  upload.single('image'),
-  (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'No file uploaded' 
+  try {
+    const userId = req.user.uid;
+    const { displayName, photoURL, email } = req.body;
+    
+    console.log(`🔄 Updating user ${userId} with:`, {
+      displayName,
+      photoURL,
+      email
+    });
+    
+    // Find user by Firebase UID and update
+    const updatedUser = await User.findOneAndUpdate(
+      { firebaseUid: userId }, // Find by Firebase UID
+      { 
+        $set: {
+          displayName: displayName,
+          photoURL: photoURL,
+          email: email || req.user.email,
+          updatedAt: new Date()
+        }
+      },
+      { 
+        new: true, // Return updated document
+        upsert: false // Don't create if doesn't exist
+      }
+    );
+    
+    if (!updatedUser) {
+      // User doesn't exist in MongoDB yet, create them
+      const newUser = await User.create({
+        firebaseUid: userId,
+        displayName: displayName,
+        photoURL: photoURL,
+        email: email || req.user.email,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+      
+      return res.json({
+        success: true,
+        message: 'User created successfully',
+        user: newUser,
+        timestamp: new Date().toISOString()
       });
     }
     
-    res.json({ 
-      success: true, 
-      message: 'Profile picture uploaded successfully',
-      file: {
-        name: req.file.originalname,
-        size: req.file.size,
-        type: req.file.mimetype
-      },
-      user: req.user.uid
+    console.log('✅ MongoDB update successful:', updatedUser);
+    
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      updatedFields: req.body,
+      user: updatedUser,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ MongoDB update error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update profile',
+      error: error.message
     });
   }
-);
-
-module.exports = router;
+});
