@@ -14,6 +14,10 @@ router.get('/health', (req, res) => {
   });
 });
 
+router.get('/count', (req, res) => {
+  res.json({ success: true, count: 1 });
+});
+
 // Fixed line 33
 router.get('/invite/:inviteCode', (req, res) => {
   res.json({ 
@@ -24,9 +28,7 @@ router.get('/invite/:inviteCode', (req, res) => {
 });
 
 // ============ AUTHENTICATED ROUTES ============
-// ✅ ADD THIS: User sessions route
 router.get('/sessions', verifyFirebaseToken, (req, res) => {
-  console.log('✅ Sessions endpoint called for user:', req.user.uid);
   res.json({ 
     success: true, 
     sessions: [],
@@ -35,26 +37,43 @@ router.get('/sessions', verifyFirebaseToken, (req, res) => {
   });
 });
 
-// ✅ ADD THIS: Update profile route
-router.put('/profile', verifyFirebaseToken, (req, res) => {
-  console.log('✅ Update profile called:', req.body);
-  res.json({ 
-    success: true, 
-    message: 'Profile updated successfully',
-    data: req.body,
-    user: req.user.uid
-  });
-});
-
-// ✅ ADD THIS: Get profile route
 router.get('/profile', verifyFirebaseToken, (req, res) => {
   res.json({ 
     success: true, 
     profile: {
       uid: req.user.uid,
       displayName: 'User',
-      email: 'user@example.com'
+      email: req.user.email || 'user@example.com',
+      profilePicture: null
     }
+  });
+});
+
+// ✅ ADD THIS: PUT profile endpoint (MISSING ROUTE)
+router.put('/profile', verifyFirebaseToken, (req, res) => {
+  console.log('✅ PUT /profile called with data:', req.body);
+  
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'No data provided for update'
+    });
+  }
+  
+  res.json({
+    success: true,
+    message: 'Profile updated successfully',
+    updatedFields: req.body,
+    user: req.user.uid,
+    timestamp: new Date().toISOString()
+  });
+});
+
+router.post('/sync', verifyFirebaseToken, (req, res) => {
+  res.json({ 
+    success: true, 
+    message: 'User synced successfully',
+    user: req.user.uid
   });
 });
 
@@ -68,8 +87,6 @@ router.post('/upload-profile-picture',
   verifyFirebaseToken,
   upload.single('image'),
   (req, res) => {
-    console.log('✅ Upload called by user:', req.user.uid);
-    
     if (!req.file) {
       return res.status(400).json({ 
         success: false, 
@@ -89,19 +106,5 @@ router.post('/upload-profile-picture',
     });
   }
 );
-
-// ✅ ADD THIS: User sync route
-router.post('/sync', verifyFirebaseToken, (req, res) => {
-  res.json({ 
-    success: true, 
-    message: 'User synced successfully',
-    user: req.user.uid
-  });
-});
-
-// ✅ ADD THIS: User count
-router.get('/count', (req, res) => {
-  res.json({ success: true, count: 1 });
-});
 
 module.exports = router;
