@@ -36,3 +36,10 @@
         "nodemon": "^3.1.10"
     }
 }
+{
+  "scripts": {
+    "prestart": "echo 'CACHE_BUST: $(date +%s)'",
+    "start": "node src/app.js"
+  },
+  "cacheBust": "1.0.$(date +%s)"
+}
