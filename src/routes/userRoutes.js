@@ -493,4 +493,33 @@ router.get('/admin/debug-user/:userId', async (req, res) => {
     });
   }
 });
+// Add this route to userRoutes.js
+router.get('/debug-routes', (req, res) => {
+  console.log('🔍 Incoming request to /debug-routes');
+  console.log('   Headers:', req.headers);
+  console.log('   Query:', req.query);
+  console.log('   Path:', req.path);
+  console.log('   Original URL:', req.originalUrl);
+  
+  res.json({
+    routesAvailable: [
+      'GET /api/users/profile',
+      'PUT /api/users/profile',
+      'GET /api/users/sessions',
+      'GET /api/users/debug-routes',
+      'GET /api/users/admin/debug-user/:userId',
+      'GET /api/users/health',
+      'POST /api/users/upload-profile-picture'
+    ],
+    currentRequest: {
+      method: req.method,
+      url: req.originalUrl,
+      query: req.query,
+      headers: {
+        authorization: req.headers.authorization ? 'Present' : 'Missing',
+        'content-type': req.headers['content-type']
+      }
+    }
+  });
+});
 module.exports = router;
