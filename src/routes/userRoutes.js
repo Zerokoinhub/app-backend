@@ -16,7 +16,7 @@ router.get('/health', (req, res) => {
 });
 
 router.get('/count', (req, res) => {
-  res.json({ success: true, count: 1 });
+  res.json({ success: true, count: 10 });
 });
 
 router.get('/invite/:inviteCode', (req, res) => {
