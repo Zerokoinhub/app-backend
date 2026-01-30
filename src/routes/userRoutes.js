@@ -18,10 +18,6 @@ router.get('/health', (req, res) => {
 // router.get('/count', (req, res) => {
 //   res.json({ success: true, count: 10 });
 // });
-// Replace this hardcoded route:
-router.get('/count', (req, res) => {
-  res.json({ success: true, count: 10 });
-});
 
 // With this actual database count:
 router.get('/count', async (req, res) => {
