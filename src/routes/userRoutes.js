@@ -15,8 +15,40 @@ router.get('/health', (req, res) => {
   });
 });
 
+// router.get('/count', (req, res) => {
+//   res.json({ success: true, count: 10 });
+// });
+// Replace this hardcoded route:
 router.get('/count', (req, res) => {
   res.json({ success: true, count: 10 });
+});
+
+// With this actual database count:
+router.get('/count', async (req, res) => {
+  try {
+    console.log('🔢 /api/users/count endpoint called');
+    
+    // Count ALL users in the database
+    const totalUsers = await User.countDocuments({});
+    
+    console.log(`✅ Total users found: ${totalUsers}`);
+    
+    res.json({
+      success: true,
+      count: totalUsers,
+      totalUsers: totalUsers,
+      message: `Total users: ${totalUsers}`,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error counting users:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to count users',
+      details: error.message,
+      count: 0
+    });
+  }
 });
 
 router.get('/invite/:inviteCode', (req, res) => {
