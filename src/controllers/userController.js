@@ -191,115 +191,157 @@ exports.getUserProfile = async (req, res) => {
   }
 };
 
+// 🔥 CRITICAL FIX: TOTALLY REWRITTEN getUserSessions FUNCTION
 exports.getUserSessions = async (req, res) => {
   try {
+    console.log("🚀 ========== getUserSessions CALLED ==========");
     const { uid } = req.user;
-    console.log("🔄 Getting sessions for Firebase UID:", uid);
+    console.log("👤 Firebase UID:", uid);
     
+    // 1. Find user
     const user = await User.findOne({ firebaseUid: uid });
     if (!user) {
-      console.log("❌ User not found for UID:", uid);
+      console.log("❌ USER NOT FOUND IN DATABASE");
       return res.status(404).json({ 
         success: false, 
-        message: "User not found" 
+        message: "User not found",
+        sessions: []
       });
     }
     
-    console.log("✅ User found:", user.email || user.firebaseUid);
-    console.log("📊 Current user sessions:", user.sessions ? user.sessions.length : 0);
-
-    const now = new Date();
+    console.log("✅ User found in DB");
+    console.log("📋 User ID:", user._id);
+    console.log("📧 Email:", user.email);
+    console.log("📊 Current sessions field:", user.sessions ? `Array(${user.sessions.length})` : 'UNDEFINED');
     
-    // 🔥 CRITICAL FIX: Ensure sessions array exists
-    if (!user.sessions || !Array.isArray(user.sessions) || user.sessions.length === 0) {
-      console.log("🔄 No sessions found, initializing fresh sessions...");
+    const now = new Date();
+    console.log("⏰ Current time:", now.toISOString());
+    
+    // 2. CRITICAL: Check if sessions field exists and is array
+    if (!user.sessions || !Array.isArray(user.sessions)) {
+      console.log("🔄 Sessions field missing or not array. Creating fresh...");
       user.sessions = [];
+    }
+    
+    // 3. If sessions array is empty or wrong length, CREATE FRESH SESSIONS
+    if (user.sessions.length === 0 || user.sessions.length !== SESSIONS_PER_DAY) {
+      console.log(`🔄 Creating ${SESSIONS_PER_DAY} fresh sessions...`);
+      
+      user.sessions = []; // Clear existing
       
       for (let i = 1; i <= SESSIONS_PER_DAY; i++) {
         const isFirstSession = i === 1;
         const unlockedAt = isFirstSession ? now : null;
         const isLocked = !isFirstSession;
         
-        // Calculate next unlock time for locked sessions
+        // Calculate next unlock time
         let nextUnlockAt = null;
         if (isLocked) {
           if (i === 2) {
-            // Second session unlocks 4 hours after first session
+            // Session 2 unlocks after SESSION_INTERVAL
             nextUnlockAt = new Date(now.getTime() + SESSION_INTERVAL);
           } else if (i > 2) {
-            // Subsequent sessions unlock 4 hours after previous session
+            // Sessions 3,4 unlock after previous session
             nextUnlockAt = new Date(now.getTime() + (SESSION_INTERVAL * (i - 1)));
           }
         }
         
-        user.sessions.push({
+        const sessionObj = {
           sessionNumber: i,
           unlockedAt: unlockedAt,
           completedAt: null,
           nextUnlockAt: nextUnlockAt,
           isClaimed: false,
-          isLocked: isLocked,
-          lastUpdated: now
-        });
+          isLocked: isLocked
+        };
         
         console.log(`   Session ${i}:`, {
           unlocked: !!unlockedAt,
           locked: isLocked,
           nextUnlock: nextUnlockAt ? nextUnlockAt.toISOString() : 'null'
         });
+        
+        user.sessions.push(sessionObj);
       }
       
-      await user.save();
-      console.log("✅ Sessions initialized and saved to database");
+      // 4. SAVE TO DATABASE WITH PROPER ERROR HANDLING
+      console.log("💾 Attempting to save to database...");
+      try {
+        const savedUser = await user.save();
+        console.log("✅ User saved successfully!");
+        console.log("📊 Saved sessions count:", savedUser.sessions.length);
+      } catch (saveError) {
+        console.error("❌ Error saving user:", saveError.message);
+        
+        // Try alternative save method
+        try {
+          await User.updateOne(
+            { _id: user._id },
+            { 
+              $set: { 
+                sessions: user.sessions,
+                updatedAt: new Date()
+              } 
+            }
+          );
+          console.log("✅ Sessions saved using updateOne");
+        } catch (updateError) {
+          console.error("❌ Even updateOne failed:", updateError.message);
+        }
+      }
     } else {
-      console.log("✅ User already has sessions:", user.sessions.length);
-      // Log each session's current state
+      console.log("✅ Sessions already exist:", user.sessions.length);
+      
+      // Log all sessions
       user.sessions.forEach(s => {
         console.log(`   Session ${s.sessionNumber}:`, {
           unlockedAt: s.unlockedAt ? s.unlockedAt.toISOString() : 'null',
           completedAt: s.completedAt ? s.completedAt.toISOString() : 'null',
           isLocked: s.isLocked,
-          nextUnlockAt: s.nextUnlockAt ? s.nextUnlockAt.toISOString() : 'null',
-          isClaimed: s.isClaimed
+          nextUnlockAt: s.nextUnlockAt ? s.nextUnlockAt.toISOString() : 'null'
         });
       });
     }
-
-    // Update session states based on current time
-    let sessionsUpdated = false;
     
-    user.sessions.forEach((session, index) => {
-      const prevSession = index > 0 ? user.sessions[index - 1] : null;
-      
-      // Auto-unlock if nextUnlockAt time has passed
-      if (session.isLocked && session.nextUnlockAt && now >= session.nextUnlockAt) {
-        console.log(`🔓 Auto-unlocking session ${session.sessionNumber}`);
-        session.isLocked = false;
-        session.unlockedAt = now;
-        session.nextUnlockAt = null;
-        sessionsUpdated = true;
-      }
-      
-      // If previous session is completed, set unlock time for current session
-      if (session.isLocked && !session.nextUnlockAt && prevSession && prevSession.completedAt) {
-        const unlockTime = new Date(prevSession.completedAt.getTime() + SESSION_INTERVAL);
-        session.nextUnlockAt = unlockTime;
-        console.log(`⏰ Set unlock time for session ${session.sessionNumber}: ${unlockTime.toISOString()}`);
-        sessionsUpdated = true;
-      }
-    });
-
-    if (sessionsUpdated) {
-      await user.save();
-      console.log("💾 Sessions updated and saved");
+    // 5. REFRESH USER FROM DATABASE TO GET LATEST DATA
+    console.log("🔄 Refreshing user data from DB...");
+    const refreshedUser = await User.findOne({ firebaseUid: uid });
+    
+    if (!refreshedUser) {
+      console.log("❌ Failed to refresh user from DB");
+      return res.status(500).json({
+        success: false,
+        message: "Failed to refresh user data",
+        sessions: []
+      });
     }
-
-    // Prepare response with countdown
-    const responseSessions = user.sessions.map(session => {
-      let activeCountdown = null;
+    
+    console.log("✅ Refreshed user data");
+    console.log("📊 Refreshed sessions count:", refreshedUser.sessions.length);
+    
+    // 6. PROCESS SESSIONS FOR RESPONSE
+    const responseSessions = refreshedUser.sessions.map(session => {
+      const sessionObj = session.toObject ? session.toObject() : session;
       
-      if (session.isLocked && session.nextUnlockAt) {
-        const timeDiff = session.nextUnlockAt.getTime() - now.getTime();
+      // Ensure dates are Date objects
+      let unlockedAt = sessionObj.unlockedAt;
+      let completedAt = sessionObj.completedAt;
+      let nextUnlockAt = sessionObj.nextUnlockAt;
+      
+      if (unlockedAt && typeof unlockedAt === 'string') {
+        unlockedAt = new Date(unlockedAt);
+      }
+      if (completedAt && typeof completedAt === 'string') {
+        completedAt = new Date(completedAt);
+      }
+      if (nextUnlockAt && typeof nextUnlockAt === 'string') {
+        nextUnlockAt = new Date(nextUnlockAt);
+      }
+      
+      // Calculate countdown if session is locked
+      let activeCountdown = null;
+      if (sessionObj.isLocked && nextUnlockAt) {
+        const timeDiff = nextUnlockAt.getTime() - now.getTime();
         if (timeDiff > 0) {
           activeCountdown = {
             hours: Math.floor(timeDiff / (1000 * 60 * 60)),
@@ -312,39 +354,48 @@ exports.getUserSessions = async (req, res) => {
       }
       
       return {
-        sessionNumber: session.sessionNumber,
-        unlockedAt: session.unlockedAt,
-        completedAt: session.completedAt,
-        nextUnlockAt: session.nextUnlockAt,
-        isClaimed: session.isClaimed,
-        isLocked: session.isLocked,
+        sessionNumber: sessionObj.sessionNumber,
+        unlockedAt: unlockedAt,
+        completedAt: completedAt,
+        nextUnlockAt: nextUnlockAt,
+        isClaimed: sessionObj.isClaimed || false,
+        isLocked: sessionObj.isLocked,
         activeCountdown: activeCountdown
       };
     });
-
-    console.log("📤 Sending response with", responseSessions.length, "sessions");
-    console.log("   First session:", responseSessions[0] ? JSON.stringify(responseSessions[0]) : 'null');
-
-    res.status(200).json({ 
+    
+    console.log("📤 Prepared response sessions:", responseSessions.length);
+    
+    // 7. SEND RESPONSE
+    res.status(200).json({
       success: true,
       sessions: responseSessions,
-      message: `Found ${responseSessions.length} sessions`,
-      now: now.toISOString(),
-      SESSION_INTERVAL: SESSION_INTERVAL,
-      SESSIONS_PER_DAY: SESSIONS_PER_DAY
+      message: `Retrieved ${responseSessions.length} sessions`,
+      debug: {
+        userId: refreshedUser._id,
+        firebaseUid: refreshedUser.firebaseUid,
+        sessionCount: responseSessions.length,
+        now: now.toISOString()
+      }
     });
     
+    console.log("✅ Response sent successfully!");
+    console.log("📊 Sessions in response:", responseSessions.length);
+    
   } catch (error) {
-    console.error("❌ Get user sessions error:", error.message);
-    console.error("Stack:", error.stack);
-    res.status(500).json({ 
+    console.error("💥 CRITICAL ERROR in getUserSessions:");
+    console.error("Error message:", error.message);
+    console.error("Error stack:", error.stack);
+    
+    res.status(500).json({
       success: false,
-      message: "Error fetching user sessions", 
+      message: "Server error fetching sessions",
       error: error.message,
-      sessions: [] // Ensure frontend gets empty array instead of crashing
+      sessions: [] // Always return empty array on error
     });
   }
 };
+
 exports.unlockNextSession = async (req, res) => {
   try {
     const { uid } = req.user;
@@ -1006,52 +1057,56 @@ exports.uploadProfilePicture = async (req, res) => {
   }
 };
 
-// ✅ Helper function to fix existing users' sessions
-exports.fixUserSessions = async (req, res) => {
+// 🚨 EMERGENCY FIX FUNCTION
+exports.emergencyFixSessions = async (req, res) => {
   try {
     const { uid } = req.user;
+    console.log("🚨 EMERGENCY FIX for user:", uid);
+    
+    // Direct database update
+    const result = await User.updateOne(
+      { firebaseUid: uid },
+      { 
+        $set: { 
+          sessions: [] // Clear sessions
+        }
+      }
+    );
+    
+    console.log("Emergency update result:", result);
+    
+    // Now call normal sessions endpoint
     const user = await User.findOne({ firebaseUid: uid });
+    
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
-
-    console.log("🔧 Fixing sessions for user:", uid);
     
+    // Force create sessions
     const now = new Date();
-    
-    // Delete existing sessions
     user.sessions = [];
     
-    // Reinitialize sessions properly
-    for (let i = 1; i <= SESSIONS_PER_DAY; i++) {
-      const isFirstSession = i === 1;
+    for (let i = 1; i <= 4; i++) {
       user.sessions.push({
         sessionNumber: i,
-        unlockedAt: isFirstSession ? now : null,
+        unlockedAt: i === 1 ? now : null,
         completedAt: null,
-        nextUnlockAt: isFirstSession ? null : getNextSessionUnlockTime(i, now),
+        nextUnlockAt: i === 1 ? null : new Date(now.getTime() + (4 * 60 * 60 * 1000 * (i - 1))),
         isClaimed: false,
-        isLocked: !isFirstSession,
-        lastUpdated: now
+        isLocked: i !== 1
       });
     }
     
     await user.save();
     
-    console.log("✅ Sessions fixed for user");
-    
-    res.status(200).json({
+    res.json({
       success: true,
-      message: "Sessions fixed successfully",
+      message: "Emergency fix applied",
       sessions: user.sessions
     });
     
   } catch (error) {
-    console.error("❌ Fix sessions error:", error.message);
-    res.status(500).json({ 
-      success: false,
-      message: "Error fixing sessions", 
-      error: error.message 
-    });
+    console.error("Emergency fix error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
