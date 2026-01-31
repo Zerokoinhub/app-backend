@@ -214,7 +214,7 @@ exports.getUserSessions = async (req, res) => {
           completedAt: null,
           nextUnlockAt: null,
           isClaimed: false,
-          isLocked: i > 1,
+          isLocked: i > 0,
         });
       }
       await user.save();
