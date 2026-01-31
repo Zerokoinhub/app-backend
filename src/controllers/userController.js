@@ -194,30 +194,43 @@ exports.getUserProfile = async (req, res) => {
 exports.getUserSessions = async (req, res) => {
   try {
     const { uid } = req.user;
+    console.log("🔄 Getting sessions for Firebase UID:", uid);
+    
     const user = await User.findOne({ firebaseUid: uid });
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      console.log("❌ User not found for UID:", uid);
+      return res.status(404).json({ 
+        success: false, 
+        message: "User not found" 
+      });
     }
+    
+    console.log("✅ User found:", user.email || user.firebaseUid);
+    console.log("📊 Current user sessions:", user.sessions ? user.sessions.length : 0);
 
     const now = new Date();
-    const today = getTodayUTC();
     
-    console.log("🔄 Getting sessions for user:", uid);
-    console.log("📅 Today:", today);
-    console.log("⏰ Current time:", now);
-    console.log("⏳ SESSION_INTERVAL:", SESSION_INTERVAL);
-    console.log("📊 SESSIONS_PER_DAY:", SESSIONS_PER_DAY);
-
-    // Check if sessions need initialization
-    if (!user.sessions || user.sessions.length === 0 || user.sessions.length !== SESSIONS_PER_DAY) {
-      console.log("🔄 Initializing sessions for user:", uid);
+    // 🔥 CRITICAL FIX: Ensure sessions array exists
+    if (!user.sessions || !Array.isArray(user.sessions) || user.sessions.length === 0) {
+      console.log("🔄 No sessions found, initializing fresh sessions...");
       user.sessions = [];
       
       for (let i = 1; i <= SESSIONS_PER_DAY; i++) {
         const isFirstSession = i === 1;
         const unlockedAt = isFirstSession ? now : null;
         const isLocked = !isFirstSession;
-        const nextUnlockAt = isFirstSession ? null : getNextSessionUnlockTime(i, now);
+        
+        // Calculate next unlock time for locked sessions
+        let nextUnlockAt = null;
+        if (isLocked) {
+          if (i === 2) {
+            // Second session unlocks 4 hours after first session
+            nextUnlockAt = new Date(now.getTime() + SESSION_INTERVAL);
+          } else if (i > 2) {
+            // Subsequent sessions unlock 4 hours after previous session
+            nextUnlockAt = new Date(now.getTime() + (SESSION_INTERVAL * (i - 1)));
+          }
+        }
         
         user.sessions.push({
           sessionNumber: i,
@@ -230,23 +243,24 @@ exports.getUserSessions = async (req, res) => {
         });
         
         console.log(`   Session ${i}:`, {
-          unlockedAt: unlockedAt ? unlockedAt.toISOString() : 'null',
-          isLocked: isLocked,
-          nextUnlockAt: nextUnlockAt ? nextUnlockAt.toISOString() : 'null'
+          unlocked: !!unlockedAt,
+          locked: isLocked,
+          nextUnlock: nextUnlockAt ? nextUnlockAt.toISOString() : 'null'
         });
       }
+      
       await user.save();
-      console.log("✅ Sessions initialized and saved");
+      console.log("✅ Sessions initialized and saved to database");
     } else {
-      console.log("✅ User has existing sessions:", user.sessions.length);
-      // Log current session states
-      user.sessions.forEach(session => {
-        console.log(`   Session ${session.sessionNumber}:`, {
-          unlockedAt: session.unlockedAt ? session.unlockedAt.toISOString() : 'null',
-          completedAt: session.completedAt ? session.completedAt.toISOString() : 'null',
-          isLocked: session.isLocked,
-          nextUnlockAt: session.nextUnlockAt ? session.nextUnlockAt.toISOString() : 'null',
-          isClaimed: session.isClaimed
+      console.log("✅ User already has sessions:", user.sessions.length);
+      // Log each session's current state
+      user.sessions.forEach(s => {
+        console.log(`   Session ${s.sessionNumber}:`, {
+          unlockedAt: s.unlockedAt ? s.unlockedAt.toISOString() : 'null',
+          completedAt: s.completedAt ? s.completedAt.toISOString() : 'null',
+          isLocked: s.isLocked,
+          nextUnlockAt: s.nextUnlockAt ? s.nextUnlockAt.toISOString() : 'null',
+          isClaimed: s.isClaimed
         });
       });
     }
@@ -254,64 +268,23 @@ exports.getUserSessions = async (req, res) => {
     // Update session states based on current time
     let sessionsUpdated = false;
     
-    user.sessions.forEach((session) => {
-      const sessionNum = session.sessionNumber;
-      const wasLocked = session.isLocked;
-      const hadNextUnlockAt = session.nextUnlockAt;
+    user.sessions.forEach((session, index) => {
+      const prevSession = index > 0 ? user.sessions[index - 1] : null;
       
-      // Auto-unlock if nextUnlockAt has passed
+      // Auto-unlock if nextUnlockAt time has passed
       if (session.isLocked && session.nextUnlockAt && now >= session.nextUnlockAt) {
-        console.log(`🔓 Auto-unlocking session ${sessionNum} (was locked, now: ${now.toISOString()}, unlockAt: ${session.nextUnlockAt.toISOString()})`);
+        console.log(`🔓 Auto-unlocking session ${session.sessionNumber}`);
         session.isLocked = false;
         session.unlockedAt = now;
         session.nextUnlockAt = null;
         sessionsUpdated = true;
       }
       
-      // If session is completed and next session exists, set its unlock time
-      if (session.completedAt && sessionNum < SESSIONS_PER_DAY) {
-        const nextSession = user.sessions.find(s => s.sessionNumber === sessionNum + 1);
-        if (nextSession && !nextSession.completedAt && !nextSession.unlockedAt) {
-          // Set unlock time for next session (e.g., 4 hours after completion)
-          const unlockTime = new Date(session.completedAt.getTime() + SESSION_INTERVAL);
-          if (now >= unlockTime) {
-            // If unlock time has passed, unlock immediately
-            nextSession.isLocked = false;
-            nextSession.unlockedAt = now;
-            nextSession.nextUnlockAt = null;
-          } else {
-            // Set future unlock time
-            nextSession.isLocked = true;
-            nextSession.nextUnlockAt = unlockTime;
-          }
-          sessionsUpdated = true;
-          console.log(`⏰ Set unlock for session ${nextSession.sessionNumber} at ${nextSession.nextUnlockAt ? nextSession.nextUnlockAt.toISOString() : 'immediately'}`);
-        }
-      }
-      
-      // If this session is unlocked but not completed, ensure next session has proper lock state
-      if (session.unlockedAt && !session.completedAt && sessionNum < SESSIONS_PER_DAY) {
-        const nextSession = user.sessions.find(s => s.sessionNumber === sessionNum + 1);
-        if (nextSession && !nextSession.unlockedAt && !nextSession.nextUnlockAt) {
-          nextSession.isLocked = true;
-          nextSession.nextUnlockAt = getNextSessionUnlockTime(sessionNum + 1, now);
-          sessionsUpdated = true;
-          console.log(`🔐 Locked next session ${nextSession.sessionNumber} with unlock at ${nextSession.nextUnlockAt.toISOString()}`);
-        }
-      }
-      
-      // Check if we need to reset sessions for new day (if all completed)
-      const allCompleted = user.sessions.every(s => s.completedAt);
-      if (allCompleted) {
-        console.log("🔄 All sessions completed, resetting for new day");
-        // Reset all sessions
-        user.sessions.forEach((s, index) => {
-          s.completedAt = null;
-          s.isClaimed = false;
-          s.isLocked = index > 0; // First session unlocked
-          s.nextUnlockAt = index > 0 ? getNextSessionUnlockTime(s.sessionNumber, now) : null;
-          s.unlockedAt = index === 0 ? now : null;
-        });
+      // If previous session is completed, set unlock time for current session
+      if (session.isLocked && !session.nextUnlockAt && prevSession && prevSession.completedAt) {
+        const unlockTime = new Date(prevSession.completedAt.getTime() + SESSION_INTERVAL);
+        session.nextUnlockAt = unlockTime;
+        console.log(`⏰ Set unlock time for session ${session.sessionNumber}: ${unlockTime.toISOString()}`);
         sessionsUpdated = true;
       }
     });
@@ -321,7 +294,7 @@ exports.getUserSessions = async (req, res) => {
       console.log("💾 Sessions updated and saved");
     }
 
-    // Calculate active countdown for each session
+    // Prepare response with countdown
     const responseSessions = user.sessions.map(session => {
       let activeCountdown = null;
       
@@ -349,40 +322,13 @@ exports.getUserSessions = async (req, res) => {
       };
     });
 
-    // Calculate stats
-    const unlockedSessions = responseSessions.filter(s => s.unlockedAt).length;
-    const completedSessions = responseSessions.filter(s => s.completedAt).length;
-    const lockedSessions = responseSessions.filter(s => s.isLocked).length;
-    const sessionsWithCountdown = responseSessions.filter(s => s.activeCountdown).length;
-
-    console.log("📊 Session Stats:", {
-      totalSessions: responseSessions.length,
-      unlockedSessions,
-      completedSessions,
-      lockedSessions,
-      sessionsWithCountdown
-    });
-
-    // Log each session's final state
-    responseSessions.forEach(session => {
-      console.log(`   Final Session ${session.sessionNumber}:`, {
-        unlocked: !!session.unlockedAt,
-        completed: !!session.completedAt,
-        locked: session.isLocked,
-        nextUnlock: session.nextUnlockAt ? session.nextUnlockAt.toISOString() : 'null',
-        countdown: session.activeCountdown ? `${session.activeCountdown.hours}h ${session.activeCountdown.minutes}m ${session.activeCountdown.seconds}s` : 'none'
-      });
-    });
+    console.log("📤 Sending response with", responseSessions.length, "sessions");
+    console.log("   First session:", responseSessions[0] ? JSON.stringify(responseSessions[0]) : 'null');
 
     res.status(200).json({ 
       success: true,
       sessions: responseSessions,
-      stats: {
-        total: responseSessions.length,
-        unlocked: unlockedSessions,
-        completed: completedSessions,
-        locked: lockedSessions
-      },
+      message: `Found ${responseSessions.length} sessions`,
       now: now.toISOString(),
       SESSION_INTERVAL: SESSION_INTERVAL,
       SESSIONS_PER_DAY: SESSIONS_PER_DAY
@@ -394,11 +340,11 @@ exports.getUserSessions = async (req, res) => {
     res.status(500).json({ 
       success: false,
       message: "Error fetching user sessions", 
-      error: error.message 
+      error: error.message,
+      sessions: [] // Ensure frontend gets empty array instead of crashing
     });
   }
 };
-
 exports.unlockNextSession = async (req, res) => {
   try {
     const { uid } = req.user;
