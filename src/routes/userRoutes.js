@@ -15,7 +15,6 @@ router.get('/health', (req, res) => {
   });
 });
 
-// Count total users in database
 router.get('/count', async (req, res) => {
   try {
     console.log('🔢 /api/users/count endpoint called');
@@ -52,7 +51,7 @@ router.get('/invite/:inviteCode', (req, res) => {
 
 // ============ SESSION ROUTES ============
 
-// ✅ FIXED: GET user sessions - Now creates sessions if they don't exist
+// GET user sessions
 router.get('/sessions', verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -63,14 +62,11 @@ router.get('/sessions', verifyFirebaseToken, async (req, res) => {
       email: firebaseEmail
     });
     
-    // Try to find user
     let user = await User.findOne({ firebaseUid: userId });
     
-    // If not found, try by email
     if (!user && firebaseEmail) {
       user = await User.findOne({ email: firebaseEmail });
       
-      // If found by email but firebaseUid is missing, update it
       if (user && !user.firebaseUid) {
         user.firebaseUid = userId;
         await user.save();
@@ -78,11 +74,9 @@ router.get('/sessions', verifyFirebaseToken, async (req, res) => {
       }
     }
     
-    // If still not found, create new user with sessions
     if (!user) {
       console.log('🆕 Creating new user with sessions for:', userId);
       
-      // Generate unique invite code
       const generateInviteCode = () => {
         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
         let code = '';
@@ -92,18 +86,16 @@ router.get('/sessions', verifyFirebaseToken, async (req, res) => {
         return code;
       };
       
-      // Get current time
       const now = new Date();
       
-      // ✅ FIXED: Create 4 sessions with PROPER LOGIC
-      // Session 1: unlocked, not completed
-      // Session 2-4: locked, will unlock after previous session completion
       const sessions = [
         {
           sessionNumber: 1,
           unlockedAt: now,
           completedAt: null,
           isLocked: false,
+          isClaimed: false,
+          coinsClaimedAt: null,
           nextUnlockAt: null,
           createdAt: now,
           lastUpdated: now
@@ -113,7 +105,9 @@ router.get('/sessions', verifyFirebaseToken, async (req, res) => {
           unlockedAt: null,
           completedAt: null,
           isLocked: true,
-          nextUnlockAt: null, // Will be set when session 1 is completed
+          isClaimed: false,
+          coinsClaimedAt: null,
+          nextUnlockAt: null,
           createdAt: now,
           lastUpdated: now
         },
@@ -122,7 +116,9 @@ router.get('/sessions', verifyFirebaseToken, async (req, res) => {
           unlockedAt: null,
           completedAt: null,
           isLocked: true,
-          nextUnlockAt: null, // Will be set when session 2 is completed
+          isClaimed: false,
+          coinsClaimedAt: null,
+          nextUnlockAt: null,
           createdAt: now,
           lastUpdated: now
         },
@@ -131,7 +127,9 @@ router.get('/sessions', verifyFirebaseToken, async (req, res) => {
           unlockedAt: null,
           completedAt: null,
           isLocked: true,
-          nextUnlockAt: null, // Will be set when session 3 is completed
+          isClaimed: false,
+          coinsClaimedAt: null,
+          nextUnlockAt: null,
           createdAt: now,
           lastUpdated: now
         }
@@ -158,19 +156,19 @@ router.get('/sessions', verifyFirebaseToken, async (req, res) => {
       });
     }
     
-    // If user exists but has no sessions, create them
     if (!user.sessions || user.sessions.length === 0) {
       console.log('🔄 Creating sessions for existing user:', user._id);
       
       const now = new Date();
       
-      // Create fresh sessions
       const sessions = [
         {
           sessionNumber: 1,
           unlockedAt: now,
           completedAt: null,
           isLocked: false,
+          isClaimed: false,
+          coinsClaimedAt: null,
           nextUnlockAt: null,
           createdAt: now,
           lastUpdated: now
@@ -180,6 +178,8 @@ router.get('/sessions', verifyFirebaseToken, async (req, res) => {
           unlockedAt: null,
           completedAt: null,
           isLocked: true,
+          isClaimed: false,
+          coinsClaimedAt: null,
           nextUnlockAt: null,
           createdAt: now,
           lastUpdated: now
@@ -189,6 +189,8 @@ router.get('/sessions', verifyFirebaseToken, async (req, res) => {
           unlockedAt: null,
           completedAt: null,
           isLocked: true,
+          isClaimed: false,
+          coinsClaimedAt: null,
           nextUnlockAt: null,
           createdAt: now,
           lastUpdated: now
@@ -198,6 +200,8 @@ router.get('/sessions', verifyFirebaseToken, async (req, res) => {
           unlockedAt: null,
           completedAt: null,
           isLocked: true,
+          isClaimed: false,
+          coinsClaimedAt: null,
           nextUnlockAt: null,
           createdAt: now,
           lastUpdated: now
@@ -217,21 +221,17 @@ router.get('/sessions', verifyFirebaseToken, async (req, res) => {
       });
     }
     
-    // User has sessions, return them
     console.log('✅ Returning existing sessions for user:', user._id);
     console.log('   Session count:', user.sessions.length);
     
-    // Update session lock status based on current time
     const now = new Date();
     let updatedSessions = user.sessions.map(session => {
       const sessionCopy = { ...session._doc || session };
       
-      // Convert to Date objects if they're strings
       if (sessionCopy.nextUnlockAt && typeof sessionCopy.nextUnlockAt === 'string') {
         sessionCopy.nextUnlockAt = new Date(sessionCopy.nextUnlockAt);
       }
       
-      // ✅ FIXED: If session is locked and nextUnlockAt has passed, unlock it
       if (sessionCopy.isLocked && sessionCopy.nextUnlockAt) {
         if (now >= sessionCopy.nextUnlockAt) {
           sessionCopy.isLocked = false;
@@ -244,7 +244,6 @@ router.get('/sessions', verifyFirebaseToken, async (req, res) => {
       return sessionCopy;
     });
     
-    // Save updated sessions if any changed
     const sessionsChanged = updatedSessions.some((session, index) => 
       JSON.stringify(session) !== JSON.stringify(user.sessions[index])
     );
@@ -272,7 +271,7 @@ router.get('/sessions', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// ✅ FIXED: Complete a session - WITH PROPER 6-HOUR COOLDOWN LOGIC
+// ✅ COMPLETE SESSION WITH CLAIM LOGIC
 router.post('/complete-session', verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -287,7 +286,6 @@ router.post('/complete-session', verifyFirebaseToken, async (req, res) => {
     
     console.log('🎯 Completing session', sessionNumber, 'for user:', userId);
     
-    // Find user
     const user = await User.findOne({ firebaseUid: userId });
     if (!user) {
       return res.status(404).json({
@@ -296,7 +294,6 @@ router.post('/complete-session', verifyFirebaseToken, async (req, res) => {
       });
     }
     
-    // Check if user has sessions
     if (!user.sessions || user.sessions.length === 0) {
       return res.status(400).json({
         success: false,
@@ -304,7 +301,6 @@ router.post('/complete-session', verifyFirebaseToken, async (req, res) => {
       });
     }
     
-    // Find the session
     const sessionIndex = user.sessions.findIndex(
       s => s.sessionNumber === sessionNumber
     );
@@ -319,17 +315,17 @@ router.post('/complete-session', verifyFirebaseToken, async (req, res) => {
     const session = user.sessions[sessionIndex];
     const now = new Date();
     
-    // Check if session is already completed
-    if (session.completedAt) {
+    // Check if already claimed
+    if (session.isClaimed) {
       return res.json({
         success: true,
-        message: `Session ${sessionNumber} was already completed`,
+        message: `Session ${sessionNumber} coins already claimed`,
         session: session,
         sessionsReset: false
       });
     }
     
-    // Check if session is locked
+    // Check if locked
     if (session.isLocked) {
       return res.status(400).json({
         success: false,
@@ -338,41 +334,49 @@ router.post('/complete-session', verifyFirebaseToken, async (req, res) => {
       });
     }
     
-    // ✅ MARK SESSION AS COMPLETED
-    user.sessions[sessionIndex].completedAt = now;
+    // ✅ STEP 1: MARK AS COMPLETED (if not already)
+    if (!session.completedAt) {
+      user.sessions[sessionIndex].completedAt = now;
+      console.log(`✅ Marked session ${sessionNumber} as completed`);
+    }
+    
+    // ✅ STEP 2: CLAIM THE COINS
+    user.sessions[sessionIndex].isClaimed = true;
+    user.sessions[sessionIndex].coinsClaimedAt = now;
     user.sessions[sessionIndex].lastUpdated = now;
     
-    // Update user balance (add 30 coins)
+    // Add balance
     user.balance = (user.balance || 0) + 30;
     
     let sessionsReset = false;
     
-    // ✅ FIXED LOGIC: SESSION 4 COMPLETION
+    // ✅ IMPORTANT: Next session timer starts FROM CLAIM TIME
     if (sessionNumber === 4) {
-      console.log('🔄 Session 4 completed! Resetting cycle...');
+      console.log('🔄 Session 4 claimed! Resetting cycle...');
       
-      // Session 4 completed → Set Session 1 to unlock after 6 hours
       const session1UnlockTime = new Date(now.getTime() + 6 * 60 * 60 * 1000);
       
       user.sessions = user.sessions.map((s, index) => {
         if (index === 0) {
-          // Session 1: Will unlock after 6 hours
           return {
             sessionNumber: 1,
             unlockedAt: null,
             completedAt: null,
             isLocked: true,
+            isClaimed: false,
+            coinsClaimedAt: null,
             nextUnlockAt: session1UnlockTime,
             createdAt: s.createdAt || now,
             lastUpdated: now
           };
         } else {
-          // Sessions 2-4: Locked, will be set when previous session completes
           return {
             sessionNumber: index + 1,
             unlockedAt: null,
             completedAt: null,
             isLocked: true,
+            isClaimed: false,
+            coinsClaimedAt: null,
             nextUnlockAt: null,
             createdAt: s.createdAt || now,
             lastUpdated: now
@@ -384,34 +388,31 @@ router.post('/complete-session', verifyFirebaseToken, async (req, res) => {
       user.lastSessionCycleCompletedAt = now;
       console.log(`⏰ Session 1 will unlock at: ${session1UnlockTime}`);
     }
-    // ✅ FIXED LOGIC: SESSION 1-3 COMPLETION
     else if (sessionNumber < 4) {
       const nextSessionIndex = sessionIndex + 1;
       if (nextSessionIndex < user.sessions.length) {
-        // Next session will unlock after 6 hours from NOW
         const unlockTime = new Date(now.getTime() + 6 * 60 * 60 * 1000);
         
         user.sessions[nextSessionIndex].isLocked = true;
         user.sessions[nextSessionIndex].nextUnlockAt = unlockTime;
         user.sessions[nextSessionIndex].lastUpdated = now;
         
-        console.log(`⏰ Session ${nextSessionIndex + 1} will unlock at:`, unlockTime);
+        console.log(`⏰ Session ${nextSessionIndex + 1} will unlock at: ${unlockTime}`);
       }
     }
     
-    // Update timestamps
     user.lastSessionCompletedAt = now;
     user.updatedAt = now;
     
     await user.save();
     
-    console.log('✅ Session completed successfully');
+    console.log('✅ Session coins claimed successfully');
     console.log('   New balance:', user.balance);
     console.log('   Sessions reset:', sessionsReset);
     
     res.json({
       success: true,
-      message: `Session ${sessionNumber} completed successfully`,
+      message: `Session ${sessionNumber} coins claimed successfully`,
       balanceAdded: 30,
       newBalance: user.balance,
       sessions: user.sessions,
@@ -431,7 +432,7 @@ router.post('/complete-session', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// ✅ FIXED: Reset sessions (for testing/debugging)
+// ✅ RESET SESSIONS
 router.post('/reset-sessions', verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -439,7 +440,6 @@ router.post('/reset-sessions', verifyFirebaseToken, async (req, res) => {
     
     console.log('🔄 Resetting sessions for user:', userId);
     
-    // Find user
     const user = await User.findOne({ firebaseUid: userId });
     if (!user) {
       return res.status(404).json({
@@ -448,13 +448,14 @@ router.post('/reset-sessions', verifyFirebaseToken, async (req, res) => {
       });
     }
     
-    // ✅ FIXED: Create fresh sessions with PROPER LOGIC
     const sessions = [
       {
         sessionNumber: 1,
         unlockedAt: now,
         completedAt: null,
         isLocked: false,
+        isClaimed: false,
+        coinsClaimedAt: null,
         nextUnlockAt: null,
         createdAt: now,
         lastUpdated: now
@@ -464,7 +465,9 @@ router.post('/reset-sessions', verifyFirebaseToken, async (req, res) => {
         unlockedAt: null,
         completedAt: null,
         isLocked: true,
-        nextUnlockAt: null, // Will be set when session 1 completes
+        isClaimed: false,
+        coinsClaimedAt: null,
+        nextUnlockAt: null,
         createdAt: now,
         lastUpdated: now
       },
@@ -473,7 +476,9 @@ router.post('/reset-sessions', verifyFirebaseToken, async (req, res) => {
         unlockedAt: null,
         completedAt: null,
         isLocked: true,
-        nextUnlockAt: null, // Will be set when session 2 completes
+        isClaimed: false,
+        coinsClaimedAt: null,
+        nextUnlockAt: null,
         createdAt: now,
         lastUpdated: now
       },
@@ -482,13 +487,14 @@ router.post('/reset-sessions', verifyFirebaseToken, async (req, res) => {
         unlockedAt: null,
         completedAt: null,
         isLocked: true,
-        nextUnlockAt: null, // Will be set when session 3 completes
+        isClaimed: false,
+        coinsClaimedAt: null,
+        nextUnlockAt: null,
         createdAt: now,
         lastUpdated: now
       }
     ];
     
-    // Update user
     user.sessions = sessions;
     user.lastSessionCompletedAt = null;
     user.updatedAt = now;
@@ -514,7 +520,6 @@ router.post('/reset-sessions', verifyFirebaseToken, async (req, res) => {
 
 // ============ PROFILE ROUTES ============
 
-// ✅ GET profile route
 router.get('/profile', verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -525,14 +530,11 @@ router.get('/profile', verifyFirebaseToken, async (req, res) => {
       email: firebaseEmail
     });
     
-    // Try to find user by firebaseUid first
     let user = await User.findOne({ firebaseUid: userId });
     
-    // If not found, try by email
     if (!user && firebaseEmail) {
       user = await User.findOne({ email: firebaseEmail });
       
-      // If found by email but firebaseUid is missing, update it
       if (user && !user.firebaseUid) {
         user.firebaseUid = userId;
         await user.save();
@@ -540,11 +542,9 @@ router.get('/profile', verifyFirebaseToken, async (req, res) => {
       }
     }
     
-    // If still not found, create new user
     if (!user) {
       console.log('🆕 Creating new user for:', userId);
       
-      // Generate unique invite code
       const generateInviteCode = () => {
         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
         let code = '';
@@ -567,7 +567,6 @@ router.get('/profile', verifyFirebaseToken, async (req, res) => {
       console.log('✅ New user created:', user._id);
     }
     
-    // Return user data
     res.json({ 
       success: true, 
       user: {
@@ -593,7 +592,6 @@ router.get('/profile', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// ✅ PUT profile endpoint WITH MONGODB SAVING
 router.put('/profile', verifyFirebaseToken, async (req, res) => {
   console.log('✅ PUT /profile called with data:', req.body);
   
@@ -608,7 +606,6 @@ router.put('/profile', verifyFirebaseToken, async (req, res) => {
     const userId = req.user.uid;
     const firebaseEmail = req.user.email;
     
-    // Extract data from request
     const { displayName, photoURL, email } = req.body;
     
     console.log(`🔄 Updating user ${userId} with:`, {
@@ -617,24 +614,20 @@ router.put('/profile', verifyFirebaseToken, async (req, res) => {
       email: email || firebaseEmail
     });
     
-    // Prepare update data - MAP displayName → name
     const updateData = {
       updatedAt: new Date()
     };
     
-    // ✅ CRITICAL: Map Flutter's displayName to MongoDB's name field
     if (displayName !== undefined && displayName !== null && displayName !== '') {
       updateData.name = displayName;
       console.log(`   Mapping: displayName "${displayName}" → name "${displayName}"`);
     }
     
-    // ✅ photoURL already matches
     if (photoURL !== undefined && photoURL !== null && photoURL !== '') {
       updateData.photoURL = photoURL;
       console.log(`   Setting photoURL: ${photoURL}`);
     }
     
-    // ✅ email (use provided or Firebase email)
     if (email !== undefined && email !== null && email !== '') {
       updateData.email = email;
       console.log(`   Setting email: ${email}`);
@@ -643,12 +636,10 @@ router.put('/profile', verifyFirebaseToken, async (req, res) => {
       console.log(`   Using Firebase email: ${firebaseEmail}`);
     }
     
-    // Ensure firebaseUid is set
     updateData.firebaseUid = userId;
     
     console.log('📦 Final update data for MongoDB:', updateData);
     
-    // Find and update user
     const updatedUser = await User.findOneAndUpdate(
       { firebaseUid: userId },
       { 
@@ -667,7 +658,6 @@ router.put('/profile', verifyFirebaseToken, async (req, res) => {
     console.log('   PhotoURL:', updatedUser.photoURL);
     console.log('   Email:', updatedUser.email);
     
-    // Return success response
     res.json({
       success: true,
       message: 'Profile updated successfully',
@@ -689,7 +679,6 @@ router.put('/profile', verifyFirebaseToken, async (req, res) => {
   } catch (error) {
     console.error('❌ PUT /profile error:', error);
     
-    // Check for specific MongoDB errors
     if (error.name === 'ValidationError') {
       return res.status(400).json({
         success: false,
@@ -716,9 +705,8 @@ router.put('/profile', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// ============ FILE UPLOAD ROUTES ============
+// ============ FILE UPLOAD ============
 
-// ✅ File upload with MongoDB save
 const upload = multer({ 
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }
@@ -741,11 +729,9 @@ router.post('/upload-profile-picture',
       
       console.log('📤 Uploading profile picture for:', userId);
       
-      // In production, upload to S3/Cloudinary/Firebase Storage
       const fileName = `${userId}_${Date.now()}_${req.file.originalname}`;
       const photoURL = `https://storage.googleapis.com/your-bucket/profile_pics/${fileName}`;
       
-      // Update user in MongoDB
       const updatedUser = await User.findOneAndUpdate(
         { firebaseUid: userId },
         { 
@@ -763,7 +749,6 @@ router.post('/upload-profile-picture',
       
       console.log('✅ Profile picture saved to MongoDB');
       
-      // Return response
       res.json({ 
         success: true, 
         message: 'Profile picture uploaded successfully',
@@ -794,9 +779,8 @@ router.post('/upload-profile-picture',
   }
 );
 
-// ============ DEBUG & TEST ROUTES ============
+// ============ DEBUG ROUTES ============
 
-// ✅ Debug route to check field mapping
 router.get('/debug-field-mapping', verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -849,7 +833,6 @@ router.get('/debug-field-mapping', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// ✅ Debug route for sessions
 router.get('/debug-sessions', verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -874,7 +857,6 @@ router.get('/debug-sessions', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// ✅ Test route to verify update works
 router.post('/test-update', verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -921,7 +903,6 @@ router.post('/test-update', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// ✅ Admin debug route
 router.get('/admin/debug-user/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -938,13 +919,6 @@ router.get('/admin/debug-user/:userId', async (req, res) => {
     console.log('   By email:', userByEmail ? 'Found' : 'Not found');
     
     const allUsers = await User.find({}).limit(5).select('name email photoURL firebaseUid sessions');
-    console.log('📋 First 5 users in database:');
-    allUsers.forEach((user, index) => {
-      console.log(`   ${index + 1}. ${user.name} (${user.email})`);
-      console.log(`      photoURL: ${user.photoURL}`);
-      console.log(`      firebaseUid: ${user.firebaseUid}`);
-      console.log(`      sessions: ${user.sessions ? user.sessions.length : 0}`);
-    });
     
     const user = userById || userByFirebaseUid || userByEmail;
     
@@ -998,7 +972,6 @@ router.get('/admin/debug-user/:userId', async (req, res) => {
   }
 });
 
-// ✅ Debug routes endpoint
 router.get('/debug-routes', (req, res) => {
   console.log('🔍 Incoming request to /debug-routes');
   
@@ -1031,7 +1004,6 @@ router.get('/debug-routes', (req, res) => {
 
 // ============ OTHER USER ROUTES ============
 
-// Update wallet address
 router.put('/wallet-address', verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -1078,7 +1050,6 @@ router.put('/wallet-address', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// Increment calculator usage
 router.put('/calculator-usage', verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -1117,7 +1088,6 @@ router.put('/calculator-usage', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// Sync Firebase user to MongoDB
 router.post('/sync', verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -1192,7 +1162,6 @@ router.post('/sync', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// Get user details
 router.get('/details', verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.uid;
