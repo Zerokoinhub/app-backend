@@ -1,7 +1,7 @@
 // Constants for session management
 const SESSIONS_PER_DAY = 4; // Number of sessions per day
-const SESSION_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
-
+//const SESSION_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
+const SESSION_INTERVAL = 30 * 1000 ; // FOR TEST PURPOSE 30 SEC
 // Get today's UTC midnight timestamp
 const getTodayUTC = () => {
   const now = new Date();
