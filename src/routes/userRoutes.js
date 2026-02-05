@@ -58,6 +58,7 @@ router.put('/wallet-address', verifyFirebaseToken, userController.updateWalletAd
 router.put('/calculator-usage', verifyFirebaseToken, userController.incrementCalculatorUsage);
 router.put('/update-balance', verifyFirebaseToken, userController.updateUserBalance);
 router.post('/unlock', verifyFirebaseToken, userController.unlockNextSession);
+router.post('/upload-screenshots', verifyFirebaseToken, userController.uploadScreenshots);
 
 // ============ FCM TOKEN MANAGEMENT ============
 router.post('/fcm-token', verifyFirebaseToken, userController.updateFCMToken);
