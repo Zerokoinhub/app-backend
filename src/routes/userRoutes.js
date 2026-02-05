@@ -32,8 +32,9 @@ router.post('/reset-sessions', verifyFirebaseToken, userController.resetUserSess
 
 // ============ PROFILE ROUTES ============
 router.get('/profile', verifyFirebaseToken, userController.getUserProfile);
-router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
 
+// ✅ UPDATED: PUT /profile ko controller mein move kiya
+router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
 
 // ============ FILE UPLOAD ============
 router.post('/upload-profile-picture', 
@@ -53,8 +54,13 @@ router.post('/upload-profile-picture',
       
       console.log('📤 Uploading profile picture for:', userId);
       
+      // ✅ CRITICAL: ACTUAL FILE UPLOAD LOGIC YAHAN ADD KARO
       const fileName = `${userId}_${Date.now()}_${req.file.originalname}`;
+      
+      // Google Cloud Storage URL (yehi old code se copy karo)
       const photoURL = `https://storage.googleapis.com/your-bucket/profile_pics/${fileName}`;
+      
+      // Cloudinary ya Firebase Storage logic yahan implement karo
       
       const updatedUser = await User.findOneAndUpdate(
         { firebaseUid: userId },
@@ -73,16 +79,17 @@ router.post('/upload-profile-picture',
       
       console.log('✅ Profile picture saved to MongoDB');
       
+      // ✅ FLUTTER KE LIYE CORRECT RESPONSE FORMAT
       res.json({ 
         success: true, 
         message: 'Profile picture uploaded successfully',
-        photoURL: photoURL,
-        photoUrl: photoURL,
+        photoURL: photoURL,  // ✅ yeh Flutter get karega
+        photoUrl: photoURL,  // ✅ alternative key
         file: {
           name: req.file.originalname,
           size: req.file.size,
           type: req.file.mimetype,
-          url: photoURL
+          url: photoURL      // ✅ yahan bhi URL provide karo
         },
         user: {
           _id: updatedUser._id,
@@ -110,7 +117,7 @@ router.post('/upload-screenshots',
   userController.uploadScreenshots
 );
 
-// ============ OTHER ROUTES (Old se Added) ============
+// ============ OTHER ROUTES ============
 router.post('/register', userController.registerUser);
 router.post('/referral', userController.processReferral);
 router.post('/sync', verifyFirebaseToken, userController.syncFirebaseUser);
@@ -124,7 +131,7 @@ router.post('/fcm-token', verifyFirebaseToken, userController.updateFCMToken);
 router.delete('/fcm-token', verifyFirebaseToken, userController.removeFCMToken);
 router.put('/notification-settings', verifyFirebaseToken, userController.updateNotificationSettings);
 
-// ============ DEBUG ROUTES (New se Keep) ============
+// ============ DEBUG ROUTES ============
 router.get('/debug-field-mapping', verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -201,6 +208,46 @@ router.get('/debug-sessions', verifyFirebaseToken, async (req, res) => {
   }
 });
 
+// ✅ TEST ROUTE FOR UPLOAD
+router.post('/test-upload', 
+  verifyFirebaseToken,
+  upload.single('image'),
+  async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No file uploaded' 
+      });
+    }
+    
+    console.log('🧪 Test upload received:', {
+      fileName: req.file.originalname,
+      size: req.file.size,
+      mimeType: req.file.mimetype
+    });
+    
+    res.json({
+      success: true,
+      message: 'Test upload successful',
+      file: {
+        name: req.file.originalname,
+        size: req.file.size,
+        type: req.file.mimetype
+      }
+    });
+  }
+);
+
+// ✅ SIMPLE TEST ROUTE
+router.get('/simple-test', verifyFirebaseToken, (req, res) => {
+  res.json({
+    success: true,
+    message: 'Simple test successful',
+    user: req.user.uid,
+    timestamp: new Date().toISOString()
+  });
+});
+
 router.get('/debug-routes', (req, res) => {
   console.log('🔍 Incoming request to /debug-routes');
   
@@ -225,7 +272,9 @@ router.get('/debug-routes', (req, res) => {
       'POST /api/users/unlock',
       'POST /api/users/fcm-token',
       'DELETE /api/users/fcm-token',
-      'PUT /api/users/notification-settings'
+      'PUT /api/users/notification-settings',
+      'POST /api/users/test-upload',
+      'GET /api/users/simple-test'
     ],
     currentRequest: {
       method: req.method,
