@@ -146,7 +146,11 @@ router.put('/profile', verifyFirebaseToken, async (req, res) => {
 });
 
 // ============ FILE UPLOAD ============
-router.get('/profile', verifyFirebaseToken, userController.uploadProfilePicture);
+router.post('/upload-profile-picture', 
+  verifyFirebaseToken,
+  upload.single('image'),
+  userController.uploadProfilePicture
+);
 // router.post('/upload-profile-picture', 
 //   verifyFirebaseToken,
 //   upload.single('image'),
