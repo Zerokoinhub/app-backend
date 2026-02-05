@@ -53,15 +53,12 @@ router.get('/invite/:inviteCode', (req, res) => {
 
 // ============ BALANCE UPDATE ============
 router.put('/update-balance', verifyFirebaseToken, userController.updateUserBalance);
-// ===============Upload Screen Shot =====================
-router.post('/upload-screenshots', verifyFirebaseToken, (req, res, next) => {
-  console.log('🔍 Route middleware - User:', req.user);
-  console.log('🔍 Route middleware - Headers:', req.headers['content-type']);
-  next();
-}, upload.array('screenshots', 6), (req, res, next) => {
-  console.log('🔍 After multer - Files:', req.files ? req.files.length : 0);
-  next();
-}, userController.uploadScreenshots);
+// =============== Upload Screen Shot =====================
+router.post('/upload-screenshots', 
+  verifyFirebaseToken, 
+  upload.array('screenshots', 6), 
+  userController.uploadScreenshots
+);
 // ============ SESSION ROUTES ============
 
 // GET user sessions
