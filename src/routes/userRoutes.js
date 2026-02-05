@@ -746,7 +746,7 @@ router.post('/upload-profile-picture',
       console.log('📤 Uploading profile picture for:', userId);
       
       const fileName = `${userId}_${Date.now()}_${req.file.originalname}`;
-      const photoURL = `https://storage.googleapis.com/your-bucket/profile_pics/${fileName}`;
+      const photoURL = `https://storage.googleapis.com/zerokoin-705c5.firebasestorage.app/profile_pics/${fileName}`;
       
       const updatedUser = await User.findOneAndUpdate(
         { firebaseUid: userId },
