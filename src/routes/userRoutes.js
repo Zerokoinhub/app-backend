@@ -8,10 +8,10 @@ const userController = require('../controllers/userController');
 console.log('✅ userRoutes.js loading with ALL routes');
 
 // ============ MULTER SETUP ============
-const upload = multer({ 
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }
-});
+// const upload = multer({ 
+//   storage: multer.memoryStorage(),
+//   limits: { fileSize: 5 * 1024 * 1024 }
+// });
 
 // ============ PUBLIC ROUTES ============
 router.get('/health', (req, res) => {
