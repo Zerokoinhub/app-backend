@@ -149,74 +149,69 @@ router.put('/profile', verifyFirebaseToken, async (req, res) => {
 router.post('/upload-profile-picture', 
   verifyFirebaseToken,
   upload.single('image'),
-  userController.uploadProfilePicture
-);
-// router.post('/upload-profile-picture', 
-//   verifyFirebaseToken,
-//   upload.single('image'),
-//   async (req, res) => {
-//     if (!req.file) {
-//       return res.status(400).json({ 
-//         success: false, 
-//         message: 'No file uploaded' 
-//       });
-//     }
+  async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No file uploaded' 
+      });
+    }
     
-//     try {
-//       const userId = req.user.uid;
-//       const firebaseEmail = req.user.email;
+    try {
+      const userId = req.user.uid;
+      const firebaseEmail = req.user.email;
       
-//       console.log('📤 Uploading profile picture for:', userId);
+      console.log('📤 Uploading profile picture for:', userId);
       
-//       const fileName = `${userId}_${Date.now()}_${req.file.originalname}`;
-//       const photoURL = `https://storage.googleapis.com/your-bucket/profile_pics/${fileName}`;
+      const fileName = `${userId}_${Date.now()}_${req.file.originalname}`;
+      const photoURL = `https://storage.googleapis.com/your-bucket/profile_pics/${fileName}`;
       
-//       const updatedUser = await User.findOneAndUpdate(
-//         { firebaseUid: userId },
-//         { 
-//           $set: { 
-//             photoURL: photoURL,
-//             updatedAt: new Date(),
-//             email: firebaseEmail
-//           }
-//         },
-//         { 
-//           new: true,
-//           upsert: true 
-//         }
-//       );
+      const updatedUser = await User.findOneAndUpdate(
+        { firebaseUid: userId },
+        { 
+          $set: { 
+            photoURL: photoURL,
+            updatedAt: new Date(),
+            email: firebaseEmail
+          }
+        },
+        { 
+          new: true,
+          upsert: true 
+        }
+      );
       
-//       console.log('✅ Profile picture saved to MongoDB');
+      console.log('✅ Profile picture saved to MongoDB');
       
-//       res.json({ 
-//         success: true, 
-//         message: 'Profile picture uploaded successfully',
-//         photoURL: photoURL,
-//         photoUrl: photoURL,
-//         file: {
-//           name: req.file.originalname,
-//           size: req.file.size,
-//           type: req.file.mimetype,
-//           url: photoURL
-//         },
-//         user: {
-//           _id: updatedUser._id,
-//           name: updatedUser.name,
-//           photoURL: updatedUser.photoURL,
-//           email: updatedUser.email
-//         }
-//       });
+      res.json({ 
+        success: true, 
+        message: 'Profile picture uploaded successfully',
+        photoURL: photoURL,
+        photoUrl: photoURL,
+        file: {
+          name: req.file.originalname,
+          size: req.file.size,
+          type: req.file.mimetype,
+          url: photoURL
+        },
+        user: {
+          _id: updatedUser._id,
+          name: updatedUser.name,
+          photoURL: updatedUser.photoURL,
+          email: updatedUser.email
+        }
+      });
       
-//     } catch (error) {
-//       console.error('❌ Upload error:', error);
-//       res.status(500).json({
-//         success: false,
-//         message: 'Failed to upload profile picture',
-//         error: error.message
-//       });
-//     }
-//   }
-// );
+    } catch (error) {
+      console.error('❌ Upload error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to upload profile picture',
+        error: error.message
+      });
+    }
+  }
+);
 
 // ============ SCREENSHOTS UPLOAD ============
 router.post('/upload-screenshots', 
