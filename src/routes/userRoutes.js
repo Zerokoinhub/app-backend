@@ -50,19 +50,9 @@ router.get('/invite/:inviteCode', (req, res) => {
   });
 });
 
-// ============ OTHER ROUTES ============
-router.post('/register', userController.registerUser);
-router.post('/referral', userController.processReferral);
-router.post('/sync', verifyFirebaseToken, userController.syncFirebaseUser);
-router.put('/wallet-address', verifyFirebaseToken, userController.updateWalletAddress);
-router.put('/calculator-usage', verifyFirebaseToken, userController.incrementCalculatorUsage);
-router.put('/update-balance', verifyFirebaseToken, userController.updateUserBalance);
-router.post('/unlock', verifyFirebaseToken, userController.unlockNextSession);
 
-// ============ FCM TOKEN MANAGEMENT ============
-router.post('/fcm-token', verifyFirebaseToken, userController.updateFCMToken);
-router.delete('/fcm-token', verifyFirebaseToken, userController.removeFCMToken);
-router.put('/notification-settings', verifyFirebaseToken, userController.updateNotificationSettings);
+// ============ BALANCE UPDATE ============
+router.put('/update-balance', verifyFirebaseToken, userController.updateUserBalance);
 
 // ============ SESSION ROUTES ============
 
@@ -361,7 +351,7 @@ router.post('/complete-session', verifyFirebaseToken, async (req, res) => {
     user.sessions[sessionIndex].lastUpdated = now;
     
     // Add balance
-    // user.balance = (user.balance || 0) + 30;
+    user.balance = (user.balance || 0) + 30;
     
     let sessionsReset = false;
     
@@ -429,7 +419,7 @@ router.post('/complete-session', verifyFirebaseToken, async (req, res) => {
       success: true,
       message: `Session ${sessionNumber} coins claimed successfully`,
       balanceAdded: 30,
-      newBalance: user.balance + 30,
+      newBalance: user.balance,
       sessions: user.sessions,
       sessionsReset: sessionsReset,
       nextSessionAvailable: sessionNumber < 4 ? 
