@@ -7,12 +7,6 @@ const userController = require('../controllers/userController');
 
 console.log('✅ userRoutes.js loading with ALL routes');
 
-// ============ MULTER SETUP ============
-// const upload = multer({ 
-//   storage: multer.memoryStorage(),
-//   limits: { fileSize: 5 * 1024 * 1024 }
-// });
-
 // ============ PUBLIC ROUTES ============
 router.get('/health', (req, res) => {
   res.json({ 
@@ -22,20 +16,56 @@ router.get('/health', (req, res) => {
   });
 });
 
-router.get('/count', userController.getUserCount);
-router.get('/invite/:inviteCode', userController.getInviteDetails);
+router.get('/count', async (req, res) => {
+  try {
+    console.log('🔢 /api/users/count endpoint called');
+    
+    const totalUsers = await User.countDocuments({});
+    
+    console.log(`✅ Total users found: ${totalUsers}`);
+    
+    res.json({
+      success: true,
+      count: totalUsers,
+      totalUsers: totalUsers,
+      message: `Total users: ${totalUsers}`,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error counting users:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to count users',
+      details: error.message,
+      count: 0
+    });
+  }
+});
 
-// ============ SESSION ROUTES ============
-// router.get('/sessions', verifyFirebaseToken, userController.getUserSessions);
-// router.post('/complete-session', verifyFirebaseToken, userController.completeSession);
-// router.post('/reset-sessions', verifyFirebaseToken, userController.resetUserSessions);
+router.get('/invite/:inviteCode', (req, res) => {
+  res.json({ 
+    success: true, 
+    inviteCode: req.params.inviteCode,
+    message: 'Invite system placeholder' 
+  });
+});
 
-// ============ PROFILE ROUTES ============
-// router.get('/profile', verifyFirebaseToken, userController.getUserProfile);
+// ============ OTHER ROUTES ============
+router.post('/register', userController.registerUser);
+router.post('/referral', userController.processReferral);
+router.post('/sync', verifyFirebaseToken, userController.syncFirebaseUser);
+router.put('/wallet-address', verifyFirebaseToken, userController.updateWalletAddress);
+router.put('/calculator-usage', verifyFirebaseToken, userController.incrementCalculatorUsage);
+router.put('/update-balance', verifyFirebaseToken, userController.updateUserBalance);
+router.post('/unlock', verifyFirebaseToken, userController.unlockNextSession);
 
-// // ✅ UPDATED: PUT /profile ko controller mein move kiya
-// router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
+// ============ FCM TOKEN MANAGEMENT ============
+router.post('/fcm-token', verifyFirebaseToken, userController.updateFCMToken);
+router.delete('/fcm-token', verifyFirebaseToken, userController.removeFCMToken);
+router.put('/notification-settings', verifyFirebaseToken, userController.updateNotificationSettings);
 
+// ============ BALANCE UPDATE ============
+router.put('/update-balance', verifyFirebaseToken, userController.updateUserBalance);
 
 // ============ SESSION ROUTES ============
 
@@ -334,7 +364,7 @@ router.post('/complete-session', verifyFirebaseToken, async (req, res) => {
     user.sessions[sessionIndex].lastUpdated = now;
     
     // Add balance
-    user.balance = (user.balance || 0) + 30;
+    // user.balance = (user.balance || 0) + 30;
     
     let sessionsReset = false;
     
@@ -402,7 +432,7 @@ router.post('/complete-session', verifyFirebaseToken, async (req, res) => {
       success: true,
       message: `Session ${sessionNumber} coins claimed successfully`,
       balanceAdded: 30,
-      newBalance: user.balance,
+      newBalance: user.balance + 30,
       sessions: user.sessions,
       sessionsReset: sessionsReset,
       nextSessionAvailable: sessionNumber < 4 ? 
@@ -766,28 +796,9 @@ router.post('/upload-profile-picture',
     }
   }
 );
-// ============ SCREENSHOTS UPLOAD ============
-router.post('/upload-screenshots', 
-  verifyFirebaseToken, 
-  upload.array('screenshots', 6), 
-  userController.uploadScreenshots
-);
-
-// ============ OTHER ROUTES ============
-router.post('/register', userController.registerUser);
-router.post('/referral', userController.processReferral);
-router.post('/sync', verifyFirebaseToken, userController.syncFirebaseUser);
-router.put('/wallet-address', verifyFirebaseToken, userController.updateWalletAddress);
-router.put('/calculator-usage', verifyFirebaseToken, userController.incrementCalculatorUsage);
-router.put('/update-balance', verifyFirebaseToken, userController.updateUserBalance);
-router.post('/unlock', verifyFirebaseToken, userController.unlockNextSession);
-
-// ============ FCM TOKEN MANAGEMENT ============
-router.post('/fcm-token', verifyFirebaseToken, userController.updateFCMToken);
-router.delete('/fcm-token', verifyFirebaseToken, userController.removeFCMToken);
-router.put('/notification-settings', verifyFirebaseToken, userController.updateNotificationSettings);
 
 // ============ DEBUG ROUTES ============
+
 router.get('/debug-field-mapping', verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -864,44 +875,119 @@ router.get('/debug-sessions', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// ✅ TEST ROUTE FOR UPLOAD
-router.post('/test-upload', 
-  verifyFirebaseToken,
-  upload.single('image'),
-  async (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'No file uploaded' 
-      });
-    }
+router.post('/test-update', verifyFirebaseToken, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const testData = {
+      displayName: `TestUser_${Date.now()}`,
+      photoURL: `https://test.com/image_${Date.now()}.jpg`,
+      email: req.user.email
+    };
     
-    console.log('🧪 Test upload received:', {
-      fileName: req.file.originalname,
-      size: req.file.size,
-      mimeType: req.file.mimetype
-    });
+    console.log('🧪 Test update with:', testData);
+    
+    const updatedUser = await User.findOneAndUpdate(
+      { firebaseUid: userId },
+      { 
+        $set: {
+          name: testData.displayName,
+          photoURL: testData.photoURL,
+          email: testData.email,
+          updatedAt: new Date()
+        }
+      },
+      { new: true, upsert: true }
+    );
     
     res.json({
       success: true,
-      message: 'Test upload successful',
-      file: {
-        name: req.file.originalname,
-        size: req.file.size,
-        type: req.file.mimetype
+      message: 'Test update successful',
+      sentData: testData,
+      storedData: {
+        name: updatedUser.name,
+        photoURL: updatedUser.photoURL,
+        email: updatedUser.email
+      },
+      verification: {
+        nameMatches: updatedUser.name === testData.displayName,
+        photoURLMatches: updatedUser.photoURL === testData.photoURL,
+        emailMatches: updatedUser.email === testData.email
       }
     });
+    
+  } catch (error) {
+    console.error('Test error:', error);
+    res.status(500).json({ error: error.message });
   }
-);
+});
 
-// ✅ SIMPLE TEST ROUTE
-router.get('/simple-test', verifyFirebaseToken, (req, res) => {
-  res.json({
-    success: true,
-    message: 'Simple test successful',
-    user: req.user.uid,
-    timestamp: new Date().toISOString()
-  });
+router.get('/admin/debug-user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    console.log(`🔍 Debugging user: ${userId}`);
+    
+    const userById = await User.findById(userId);
+    const userByFirebaseUid = await User.findOne({ firebaseUid: userId });
+    const userByEmail = await User.findOne({ email: userId });
+    
+    console.log('📊 Database query results:');
+    console.log('   By MongoDB _id:', userById ? 'Found' : 'Not found');
+    console.log('   By firebaseUid:', userByFirebaseUid ? 'Found' : 'Not found');
+    console.log('   By email:', userByEmail ? 'Found' : 'Not found');
+    
+    const allUsers = await User.find({}).limit(5).select('name email photoURL firebaseUid sessions');
+    
+    const user = userById || userByFirebaseUid || userByEmail;
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+        searchMethods: {
+          byId: !!userById,
+          byFirebaseUid: !!userByFirebaseUid,
+          byEmail: !!userByEmail
+        }
+      });
+    }
+    
+    res.json({
+      success: true,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        photoURL: user.photoURL,
+        photoURLExists: !!user.photoURL,
+        photoURLType: user.photoURL ? 
+          (user.photoURL.includes('firebasestorage') ? 'Firebase Storage' : 
+           user.photoURL.includes('cloudinary') ? 'Cloudinary' : 
+           'Other') : 'None',
+        firebaseUid: user.firebaseUid,
+        balance: user.balance,
+        sessions: user.sessions || [],
+        sessionsCount: user.sessions ? user.sessions.length : 0,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
+      },
+      allUsers: allUsers.map(u => ({
+        _id: u._id,
+        name: u.name,
+        email: u.email,
+        photoURL: u.photoURL,
+        firebaseUid: u.firebaseUid,
+        sessionsCount: u.sessions ? u.sessions.length : 0
+      }))
+    });
+    
+  } catch (error) {
+    console.error('Debug error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
 });
 
 router.get('/debug-routes', (req, res) => {
@@ -909,28 +995,18 @@ router.get('/debug-routes', (req, res) => {
   
   res.json({
     routesAvailable: [
-      'GET /api/users/health',
-      'GET /api/users/count',
-      'GET /api/users/invite/:inviteCode',
+      'GET /api/users/profile',
+      'PUT /api/users/profile',
       'GET /api/users/sessions',
       'POST /api/users/complete-session',
       'POST /api/users/reset-sessions',
-      'GET /api/users/profile',
-      'PUT /api/users/profile',
-      'POST /api/users/upload-profile-picture',
-      'POST /api/users/upload-screenshots',
-      'POST /api/users/register',
-      'POST /api/users/referral',
-      'POST /api/users/sync',
-      'PUT /api/users/wallet-address',
-      'PUT /api/users/calculator-usage',
-      'PUT /api/users/update-balance',
-      'POST /api/users/unlock',
-      'POST /api/users/fcm-token',
-      'DELETE /api/users/fcm-token',
-      'PUT /api/users/notification-settings',
-      'POST /api/users/test-upload',
-      'GET /api/users/simple-test'
+      'GET /api/users/debug-routes',
+      'GET /api/users/debug-sessions',
+      'GET /api/users/debug-field-mapping',
+      'GET /api/users/admin/debug-user/:userId',
+      'GET /api/users/health',
+      'GET /api/users/count',
+      'POST /api/users/upload-profile-picture'
     ],
     currentRequest: {
       method: req.method,
@@ -942,6 +1018,204 @@ router.get('/debug-routes', (req, res) => {
       }
     }
   });
+});
+
+// ============ OTHER USER ROUTES ============
+
+router.put('/wallet-address', verifyFirebaseToken, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const { walletType, walletAddress } = req.body;
+    
+    console.log(`🔄 Updating ${walletType} wallet for user ${userId}: ${walletAddress}`);
+    
+    const user = await User.findOneAndUpdate(
+      { firebaseUid: userId },
+      { 
+        $set: { 
+          [`wallets.${walletType}`]: walletAddress,
+          updatedAt: new Date()
+        }
+      },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Wallet address updated successfully',
+      walletType: walletType,
+      walletAddress: walletAddress,
+      user: {
+        _id: user._id,
+        wallets: user.wallets
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error updating wallet address:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update wallet address',
+      error: error.message
+    });
+  }
+});
+
+router.put('/calculator-usage', verifyFirebaseToken, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    
+    console.log(`🔄 Incrementing calculator usage for user ${userId}`);
+    
+    const user = await User.findOneAndUpdate(
+      { firebaseUid: userId },
+      { 
+        $inc: { calculatorUsage: 1 },
+        $set: { updatedAt: new Date() }
+      },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Calculator usage incremented',
+      calculatorUsage: user.calculatorUsage || 1
+    });
+    
+  } catch (error) {
+    console.error('❌ Error incrementing calculator usage:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to increment calculator usage',
+      error: error.message
+    });
+  }
+});
+
+router.post('/sync', verifyFirebaseToken, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const firebaseEmail = req.user.email;
+    const firebaseName = req.user.name;
+    const firebasePhotoURL = req.user.picture;
+    
+    console.log('🔄 Syncing Firebase user to MongoDB:', {
+      userId,
+      email: firebaseEmail,
+      name: firebaseName,
+      photoURL: firebasePhotoURL
+    });
+    
+    const generateInviteCode = () => {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let code = '';
+      for (let i = 0; i < 8; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return code;
+    };
+    
+    let user = await User.findOne({ firebaseUid: userId });
+    
+    if (!user && firebaseEmail) {
+      user = await User.findOne({ email: firebaseEmail });
+    }
+    
+    if (user) {
+      user.name = firebaseName || user.name;
+      user.photoURL = firebasePhotoURL || user.photoURL;
+      user.firebaseUid = userId;
+      user.updatedAt = new Date();
+      await user.save();
+      
+      console.log('✅ Existing user synced:', user._id);
+    } else {
+      user = await User.create({
+        firebaseUid: userId,
+        email: firebaseEmail,
+        name: firebaseName || '',
+        photoURL: firebasePhotoURL || '',
+        inviteCode: generateInviteCode(),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+      
+      console.log('✅ New user created:', user._id);
+    }
+    
+    res.json({
+      success: true,
+      message: 'User synced successfully',
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        photoURL: user.photoURL,
+        firebaseUid: user.firebaseUid,
+        inviteCode: user.inviteCode
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Sync error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to sync user',
+      error: error.message
+    });
+  }
+});
+
+router.get('/details', verifyFirebaseToken, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    
+    const user = await User.findOne({ firebaseUid: userId });
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        photoURL: user.photoURL,
+        firebaseUid: user.firebaseUid,
+        balance: user.balance || 0,
+        inviteCode: user.inviteCode,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error getting user details:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get user details',
+      error: error.message
+    });
+  }
 });
 
 module.exports = router;
