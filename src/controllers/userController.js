@@ -429,17 +429,46 @@ exports.updateWalletAddress = async (req, res) => {
   }
 };
 
+// exports.getUserCount = async (req, res) => {
+//   try {
+//     const count = await User.countDocuments();
+//     res.status(200).json({ count });
+//   } catch (error) {
+//     console.error("Get user count error:", error.message);
+//     res
+//       .status(500)
+//       .json({ message: "Error getting user count", error: error.message });
+//   }
+// };
+
+// new route for count
 exports.getUserCount = async (req, res) => {
   try {
-    const count = await User.countDocuments();
-    res.status(200).json({ count });
+    console.log('🔢 /api/users/count endpoint called');
+    
+    const totalUsers = await User.countDocuments({});
+    
+    console.log(`✅ Total users found: ${totalUsers}`);
+    
+    res.json({
+      success: true,
+      count: totalUsers,
+      totalUsers: totalUsers,
+      message: `Total users: ${totalUsers}`,
+      timestamp: new Date().toISOString()
+    });
   } catch (error) {
-    console.error("Get user count error:", error.message);
-    res
-      .status(500)
-      .json({ message: "Error getting user count", error: error.message });
+    console.error('❌ Error counting users:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to count users',
+      details: error.message,
+      count: 0
+    });
   }
-};
+});
+
+
 
 exports.resetUserSessions = async (req, res) => {
   try {
