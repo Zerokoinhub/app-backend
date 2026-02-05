@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
-const User = require('../models/User');
+const User = require('../models/User'); // Make sure to import User model
 
 console.log('✅ userRoutes.js loading with ALL routes');
 
@@ -15,10 +15,16 @@ router.get('/health', (req, res) => {
   });
 });
 
+// router.get('/count', (req, res) => {
+//   res.json({ success: true, count: 10 });
+// });
+
+// With this actual database count:
 router.get('/count', async (req, res) => {
   try {
     console.log('🔢 /api/users/count endpoint called');
     
+    // Count ALL users in the database
     const totalUsers = await User.countDocuments({});
     
     console.log(`✅ Total users found: ${totalUsers}`);
@@ -49,477 +55,17 @@ router.get('/invite/:inviteCode', (req, res) => {
   });
 });
 
-// ============ SESSION ROUTES ============
-
-// GET user sessions
-router.get('/sessions', verifyFirebaseToken, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const firebaseEmail = req.user.email;
-    
-    console.log('📥 GET /sessions for:', {
-      userId,
-      email: firebaseEmail
-    });
-    
-    let user = await User.findOne({ firebaseUid: userId });
-    
-    if (!user && firebaseEmail) {
-      user = await User.findOne({ email: firebaseEmail });
-      
-      if (user && !user.firebaseUid) {
-        user.firebaseUid = userId;
-        await user.save();
-        console.log('✅ Updated firebaseUid for existing user');
-      }
-    }
-    
-    if (!user) {
-      console.log('🆕 Creating new user with sessions for:', userId);
-      
-      const generateInviteCode = () => {
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-        let code = '';
-        for (let i = 0; i < 8; i++) {
-          code += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return code;
-      };
-      
-      const now = new Date();
-      
-      const sessions = [
-        {
-          sessionNumber: 1,
-          unlockedAt: now,
-          completedAt: null,
-          isLocked: false,
-          isClaimed: false,
-          coinsClaimedAt: null,
-          nextUnlockAt: null,
-          createdAt: now,
-          lastUpdated: now
-        },
-        {
-          sessionNumber: 2,
-          unlockedAt: null,
-          completedAt: null,
-          isLocked: true,
-          isClaimed: false,
-          coinsClaimedAt: null,
-          nextUnlockAt: null,
-          createdAt: now,
-          lastUpdated: now
-        },
-        {
-          sessionNumber: 3,
-          unlockedAt: null,
-          completedAt: null,
-          isLocked: true,
-          isClaimed: false,
-          coinsClaimedAt: null,
-          nextUnlockAt: null,
-          createdAt: now,
-          lastUpdated: now
-        },
-        {
-          sessionNumber: 4,
-          unlockedAt: null,
-          completedAt: null,
-          isLocked: true,
-          isClaimed: false,
-          coinsClaimedAt: null,
-          nextUnlockAt: null,
-          createdAt: now,
-          lastUpdated: now
-        }
-      ];
-      
-      user = await User.create({
-        firebaseUid: userId,
-        email: firebaseEmail,
-        name: req.user.name || '',
-        photoURL: req.user.picture || '',
-        inviteCode: generateInviteCode(),
-        sessions: sessions,
-        createdAt: now,
-        updatedAt: now
-      });
-      
-      console.log('✅ New user created with sessions:', user._id);
-      
-      return res.json({ 
-        success: true, 
-        sessions: sessions,
-        message: 'New user sessions created',
-        user: userId
-      });
-    }
-    
-    if (!user.sessions || user.sessions.length === 0) {
-      console.log('🔄 Creating sessions for existing user:', user._id);
-      
-      const now = new Date();
-      
-      const sessions = [
-        {
-          sessionNumber: 1,
-          unlockedAt: now,
-          completedAt: null,
-          isLocked: false,
-          isClaimed: false,
-          coinsClaimedAt: null,
-          nextUnlockAt: null,
-          createdAt: now,
-          lastUpdated: now
-        },
-        {
-          sessionNumber: 2,
-          unlockedAt: null,
-          completedAt: null,
-          isLocked: true,
-          isClaimed: false,
-          coinsClaimedAt: null,
-          nextUnlockAt: null,
-          createdAt: now,
-          lastUpdated: now
-        },
-        {
-          sessionNumber: 3,
-          unlockedAt: null,
-          completedAt: null,
-          isLocked: true,
-          isClaimed: false,
-          coinsClaimedAt: null,
-          nextUnlockAt: null,
-          createdAt: now,
-          lastUpdated: now
-        },
-        {
-          sessionNumber: 4,
-          unlockedAt: null,
-          completedAt: null,
-          isLocked: true,
-          isClaimed: false,
-          coinsClaimedAt: null,
-          nextUnlockAt: null,
-          createdAt: now,
-          lastUpdated: now
-        }
-      ];
-      
-      user.sessions = sessions;
-      await user.save();
-      
-      console.log('✅ Sessions created for existing user');
-      
-      return res.json({ 
-        success: true, 
-        sessions: sessions,
-        message: 'Sessions created for existing user',
-        user: userId
-      });
-    }
-    
-    console.log('✅ Returning existing sessions for user:', user._id);
-    console.log('   Session count:', user.sessions.length);
-    
-    const now = new Date();
-    let updatedSessions = user.sessions.map(session => {
-      const sessionCopy = { ...session._doc || session };
-      
-      if (sessionCopy.nextUnlockAt && typeof sessionCopy.nextUnlockAt === 'string') {
-        sessionCopy.nextUnlockAt = new Date(sessionCopy.nextUnlockAt);
-      }
-      
-      if (sessionCopy.isLocked && sessionCopy.nextUnlockAt) {
-        if (now >= sessionCopy.nextUnlockAt) {
-          sessionCopy.isLocked = false;
-          sessionCopy.unlockedAt = now;
-          sessionCopy.nextUnlockAt = null;
-          console.log(`🔓 Auto-unlocked session ${sessionCopy.sessionNumber}`);
-        }
-      }
-      
-      return sessionCopy;
-    });
-    
-    const sessionsChanged = updatedSessions.some((session, index) => 
-      JSON.stringify(session) !== JSON.stringify(user.sessions[index])
-    );
-    
-    if (sessionsChanged) {
-      user.sessions = updatedSessions;
-      await user.save();
-      console.log('🔓 Updated session lock status');
-    }
-    
-    res.json({ 
-      success: true, 
-      sessions: updatedSessions,
-      message: 'Sessions retrieved successfully',
-      user: userId
-    });
-    
-  } catch (error) {
-    console.error('❌ GET /sessions error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch sessions',
-      error: error.message
-    });
-  }
+// ============ AUTHENTICATED ROUTES ============
+router.get('/sessions', verifyFirebaseToken, (req, res) => {
+  res.json({ 
+    success: true, 
+    sessions: [],
+    message: 'Sessions placeholder',
+    user: req.user.uid
+  });
 });
 
-// ✅ COMPLETE SESSION WITH CLAIM LOGIC
-router.post('/complete-session', verifyFirebaseToken, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const { sessionNumber } = req.body;
-    
-    if (!sessionNumber || sessionNumber < 1 || sessionNumber > 4) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid session number. Must be between 1 and 4'
-      });
-    }
-    
-    console.log('🎯 Completing session', sessionNumber, 'for user:', userId);
-    
-    const user = await User.findOne({ firebaseUid: userId });
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    if (!user.sessions || user.sessions.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No sessions found for user'
-      });
-    }
-    
-    const sessionIndex = user.sessions.findIndex(
-      s => s.sessionNumber === sessionNumber
-    );
-    
-    if (sessionIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        message: `Session ${sessionNumber} not found`
-      });
-    }
-    
-    const session = user.sessions[sessionIndex];
-    const now = new Date();
-    
-    // Check if already claimed
-    if (session.isClaimed) {
-      return res.json({
-        success: true,
-        message: `Session ${sessionNumber} coins already claimed`,
-        session: session,
-        sessionsReset: false
-      });
-    }
-    
-    // Check if locked
-    if (session.isLocked) {
-      return res.status(400).json({
-        success: false,
-        message: `Session ${sessionNumber} is locked`,
-        nextUnlockAt: session.nextUnlockAt
-      });
-    }
-    
-    // ✅ STEP 1: MARK AS COMPLETED (if not already)
-    if (!session.completedAt) {
-      user.sessions[sessionIndex].completedAt = now;
-      console.log(`✅ Marked session ${sessionNumber} as completed`);
-    }
-    
-    // ✅ STEP 2: CLAIM THE COINS
-    user.sessions[sessionIndex].isClaimed = true;
-    user.sessions[sessionIndex].coinsClaimedAt = now;
-    user.sessions[sessionIndex].lastUpdated = now;
-    
-    // Add balance
-    user.balance = (user.balance || 0) + 30;
-    
-    let sessionsReset = false;
-    
-    // ✅ IMPORTANT: Next session timer starts FROM CLAIM TIME
-    if (sessionNumber === 4) {
-      console.log('🔄 Session 4 claimed! Resetting cycle...');
-      
-      const session1UnlockTime = new Date(now.getTime() + 6 * 60 * 60 * 1000);
-      
-      user.sessions = user.sessions.map((s, index) => {
-        if (index === 0) {
-          return {
-            sessionNumber: 1,
-            unlockedAt: null,
-            completedAt: null,
-            isLocked: true,
-            isClaimed: false,
-            coinsClaimedAt: null,
-            nextUnlockAt: session1UnlockTime,
-            createdAt: s.createdAt || now,
-            lastUpdated: now
-          };
-        } else {
-          return {
-            sessionNumber: index + 1,
-            unlockedAt: null,
-            completedAt: null,
-            isLocked: true,
-            isClaimed: false,
-            coinsClaimedAt: null,
-            nextUnlockAt: null,
-            createdAt: s.createdAt || now,
-            lastUpdated: now
-          };
-        }
-      });
-      
-      sessionsReset = true;
-      user.lastSessionCycleCompletedAt = now;
-      console.log(`⏰ Session 1 will unlock at: ${session1UnlockTime}`);
-    }
-    else if (sessionNumber < 4) {
-      const nextSessionIndex = sessionIndex + 1;
-      if (nextSessionIndex < user.sessions.length) {
-        const unlockTime = new Date(now.getTime() + 6 * 60 * 60 * 1000);
-        
-        user.sessions[nextSessionIndex].isLocked = true;
-        user.sessions[nextSessionIndex].nextUnlockAt = unlockTime;
-        user.sessions[nextSessionIndex].lastUpdated = now;
-        
-        console.log(`⏰ Session ${nextSessionIndex + 1} will unlock at: ${unlockTime}`);
-      }
-    }
-    
-    user.lastSessionCompletedAt = now;
-    user.updatedAt = now;
-    
-    await user.save();
-    
-    console.log('✅ Session coins claimed successfully');
-    console.log('   New balance:', user.balance);
-    console.log('   Sessions reset:', sessionsReset);
-    
-    res.json({
-      success: true,
-      message: `Session ${sessionNumber} coins claimed successfully`,
-      balanceAdded: 30,
-      newBalance: user.balance,
-      sessions: user.sessions,
-      sessionsReset: sessionsReset,
-      nextSessionAvailable: sessionNumber < 4 ? 
-        `Session ${sessionNumber + 1} available in 6 hours` : 
-        'Session 1 available in 6 hours'
-    });
-    
-  } catch (error) {
-    console.error('❌ POST /complete-session error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to complete session',
-      error: error.message
-    });
-  }
-});
-
-// ✅ RESET SESSIONS
-router.post('/reset-sessions', verifyFirebaseToken, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const now = new Date();
-    
-    console.log('🔄 Resetting sessions for user:', userId);
-    
-    const user = await User.findOne({ firebaseUid: userId });
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    const sessions = [
-      {
-        sessionNumber: 1,
-        unlockedAt: now,
-        completedAt: null,
-        isLocked: false,
-        isClaimed: false,
-        coinsClaimedAt: null,
-        nextUnlockAt: null,
-        createdAt: now,
-        lastUpdated: now
-      },
-      {
-        sessionNumber: 2,
-        unlockedAt: null,
-        completedAt: null,
-        isLocked: true,
-        isClaimed: false,
-        coinsClaimedAt: null,
-        nextUnlockAt: null,
-        createdAt: now,
-        lastUpdated: now
-      },
-      {
-        sessionNumber: 3,
-        unlockedAt: null,
-        completedAt: null,
-        isLocked: true,
-        isClaimed: false,
-        coinsClaimedAt: null,
-        nextUnlockAt: null,
-        createdAt: now,
-        lastUpdated: now
-      },
-      {
-        sessionNumber: 4,
-        unlockedAt: null,
-        completedAt: null,
-        isLocked: true,
-        isClaimed: false,
-        coinsClaimedAt: null,
-        nextUnlockAt: null,
-        createdAt: now,
-        lastUpdated: now
-      }
-    ];
-    
-    user.sessions = sessions;
-    user.lastSessionCompletedAt = null;
-    user.updatedAt = now;
-    await user.save();
-    
-    console.log('✅ Sessions reset successfully');
-    
-    res.json({
-      success: true,
-      message: 'Sessions reset successfully',
-      sessions: sessions
-    });
-    
-  } catch (error) {
-    console.error('❌ POST /reset-sessions error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to reset sessions',
-      error: error.message
-    });
-  }
-});
-
-// ============ PROFILE ROUTES ============
-
+// ✅ UPDATED: GET profile route
 router.get('/profile', verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -530,11 +76,14 @@ router.get('/profile', verifyFirebaseToken, async (req, res) => {
       email: firebaseEmail
     });
     
+    // Try to find user by firebaseUid first
     let user = await User.findOne({ firebaseUid: userId });
     
+    // If not found, try by email
     if (!user && firebaseEmail) {
       user = await User.findOne({ email: firebaseEmail });
       
+      // If found by email but firebaseUid is missing, update it
       if (user && !user.firebaseUid) {
         user.firebaseUid = userId;
         await user.save();
@@ -542,9 +91,11 @@ router.get('/profile', verifyFirebaseToken, async (req, res) => {
       }
     }
     
+    // If still not found, create new user
     if (!user) {
       console.log('🆕 Creating new user for:', userId);
       
+      // Generate unique invite code
       const generateInviteCode = () => {
         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
         let code = '';
@@ -557,8 +108,8 @@ router.get('/profile', verifyFirebaseToken, async (req, res) => {
       user = await User.create({
         firebaseUid: userId,
         email: firebaseEmail,
-        name: req.user.name || '',
-        photoURL: req.user.picture || '',
+        name: req.user.name || '', // Use Firebase name if available
+        photoURL: req.user.picture || '', // Use Firebase photo if available
         inviteCode: generateInviteCode(),
         createdAt: new Date(),
         updatedAt: new Date()
@@ -567,6 +118,7 @@ router.get('/profile', verifyFirebaseToken, async (req, res) => {
       console.log('✅ New user created:', user._id);
     }
     
+    // Return user data
     res.json({ 
       success: true, 
       user: {
@@ -576,7 +128,7 @@ router.get('/profile', verifyFirebaseToken, async (req, res) => {
         email: user.email,
         firebaseUid: user.firebaseUid,
         inviteCode: user.inviteCode,
-        balance: user.balance || 0,
+        balance: user.balance,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt
       }
@@ -592,6 +144,7 @@ router.get('/profile', verifyFirebaseToken, async (req, res) => {
   }
 });
 
+// ✅ UPDATED: PUT profile endpoint WITH MONGODB SAVING
 router.put('/profile', verifyFirebaseToken, async (req, res) => {
   console.log('✅ PUT /profile called with data:', req.body);
   
@@ -606,6 +159,7 @@ router.put('/profile', verifyFirebaseToken, async (req, res) => {
     const userId = req.user.uid;
     const firebaseEmail = req.user.email;
     
+    // Extract data from request
     const { displayName, photoURL, email } = req.body;
     
     console.log(`🔄 Updating user ${userId} with:`, {
@@ -614,20 +168,24 @@ router.put('/profile', verifyFirebaseToken, async (req, res) => {
       email: email || firebaseEmail
     });
     
+    // Prepare update data - MAP displayName → name
     const updateData = {
       updatedAt: new Date()
     };
     
+    // ✅ CRITICAL: Map Flutter's displayName to MongoDB's name field
     if (displayName !== undefined && displayName !== null && displayName !== '') {
       updateData.name = displayName;
       console.log(`   Mapping: displayName "${displayName}" → name "${displayName}"`);
     }
     
+    // ✅ photoURL already matches
     if (photoURL !== undefined && photoURL !== null && photoURL !== '') {
       updateData.photoURL = photoURL;
       console.log(`   Setting photoURL: ${photoURL}`);
     }
     
+    // ✅ email (use provided or Firebase email)
     if (email !== undefined && email !== null && email !== '') {
       updateData.email = email;
       console.log(`   Setting email: ${email}`);
@@ -636,18 +194,20 @@ router.put('/profile', verifyFirebaseToken, async (req, res) => {
       console.log(`   Using Firebase email: ${firebaseEmail}`);
     }
     
+    // Ensure firebaseUid is set
     updateData.firebaseUid = userId;
     
     console.log('📦 Final update data for MongoDB:', updateData);
     
+    // Find and update user
     const updatedUser = await User.findOneAndUpdate(
-      { firebaseUid: userId },
+      { firebaseUid: userId }, // Find by Firebase UID
       { 
         $set: updateData
       },
       { 
-        new: true,
-        upsert: true,
+        new: true, // Return updated document
+        upsert: true, // Create if doesn't exist
         runValidators: true
       }
     );
@@ -658,6 +218,7 @@ router.put('/profile', verifyFirebaseToken, async (req, res) => {
     console.log('   PhotoURL:', updatedUser.photoURL);
     console.log('   Email:', updatedUser.email);
     
+    // Return success response
     res.json({
       success: true,
       message: 'Profile updated successfully',
@@ -679,6 +240,7 @@ router.put('/profile', verifyFirebaseToken, async (req, res) => {
   } catch (error) {
     console.error('❌ PUT /profile error:', error);
     
+    // Check for specific MongoDB errors
     if (error.name === 'ValidationError') {
       return res.status(400).json({
         success: false,
@@ -705,11 +267,10 @@ router.put('/profile', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// ============ FILE UPLOAD ============
-
+// ✅ UPDATED: File upload with MongoDB save
 const upload = multer({ 
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 });
 
 router.post('/upload-profile-picture', 
@@ -728,17 +289,25 @@ router.post('/upload-profile-picture',
       const firebaseEmail = req.user.email;
       
       console.log('📤 Uploading profile picture for:', userId);
+      console.log('   File info:', {
+        name: req.file.originalname,
+        size: req.file.size,
+        type: req.file.mimetype
+      });
       
+      // In production, upload to S3/Cloudinary/Firebase Storage
+      // For now, generate a placeholder URL or save filename
       const fileName = `${userId}_${Date.now()}_${req.file.originalname}`;
       const photoURL = `https://storage.googleapis.com/your-bucket/profile_pics/${fileName}`;
       
+      // Update user in MongoDB
       const updatedUser = await User.findOneAndUpdate(
         { firebaseUid: userId },
         { 
           $set: { 
             photoURL: photoURL,
             updatedAt: new Date(),
-            email: firebaseEmail
+            email: firebaseEmail // Ensure email is set
           }
         },
         { 
@@ -748,11 +317,13 @@ router.post('/upload-profile-picture',
       );
       
       console.log('✅ Profile picture saved to MongoDB');
+      console.log('   PhotoURL:', updatedUser.photoURL);
       
+      // Return response
       res.json({ 
         success: true, 
         message: 'Profile picture uploaded successfully',
-        photoURL: photoURL,
+        photoURL: photoURL, // Send both photoURL and photoUrl for compatibility
         photoUrl: photoURL,
         file: {
           name: req.file.originalname,
@@ -779,8 +350,7 @@ router.post('/upload-profile-picture',
   }
 );
 
-// ============ DEBUG ROUTES ============
-
+// ✅ ADD: Debug route to check field mapping
 router.get('/debug-field-mapping', verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -799,6 +369,7 @@ router.get('/debug-field-mapping', verifyFirebaseToken, async (req, res) => {
       });
     }
     
+    // Show all fields
     const userObj = user.toObject();
     
     res.json({
@@ -807,12 +378,10 @@ router.get('/debug-field-mapping', verifyFirebaseToken, async (req, res) => {
       currentData: {
         _id: user._id,
         name: user.name,
-        displayName: user.displayName,
+        displayName: user.displayName, // Will be undefined
         photoURL: user.photoURL,
         email: user.email,
-        firebaseUid: user.firebaseUid,
-        balance: user.balance,
-        sessionsCount: user.sessions ? user.sessions.length : 0
+        firebaseUid: user.firebaseUid
       },
       fieldMapping: {
         'Flutter sends': 'displayName',
@@ -822,8 +391,7 @@ router.get('/debug-field-mapping', verifyFirebaseToken, async (req, res) => {
       schemaCheck: {
         hasNameField: user.schema.path('name') !== undefined,
         hasDisplayNameField: user.schema.path('displayName') !== undefined,
-        hasPhotoURLField: user.schema.path('photoURL') !== undefined,
-        hasSessionsField: user.schema.path('sessions') !== undefined
+        hasPhotoURLField: user.schema.path('photoURL') !== undefined
       }
     });
     
@@ -833,30 +401,7 @@ router.get('/debug-field-mapping', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-router.get('/debug-sessions', verifyFirebaseToken, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const user = await User.findOne({ firebaseUid: userId });
-    
-    res.json({
-      success: true,
-      userExists: !!user,
-      hasSessionsField: user && user.sessions !== undefined,
-      sessionsCount: user ? (user.sessions ? user.sessions.length : 0) : 0,
-      sessions: user ? user.sessions : [],
-      userDetails: user ? {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        balance: user.balance,
-        firebaseUid: user.firebaseUid
-      } : null
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
+// ✅ ADD: Test route to verify update works
 router.post('/test-update', verifyFirebaseToken, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -868,11 +413,12 @@ router.post('/test-update', verifyFirebaseToken, async (req, res) => {
     
     console.log('🧪 Test update with:', testData);
     
+    // Update user
     const updatedUser = await User.findOneAndUpdate(
       { firebaseUid: userId },
       { 
         $set: {
-          name: testData.displayName,
+          name: testData.displayName, // Map displayName → name
           photoURL: testData.photoURL,
           email: testData.email,
           updatedAt: new Date()
@@ -902,13 +448,14 @@ router.post('/test-update', verifyFirebaseToken, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
+// Add to your userRoutes.js
 router.get('/admin/debug-user/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
     
     console.log(`🔍 Debugging user: ${userId}`);
     
+    // Try different ways to find the user
     const userById = await User.findById(userId);
     const userByFirebaseUid = await User.findOne({ firebaseUid: userId });
     const userByEmail = await User.findOne({ email: userId });
@@ -918,7 +465,14 @@ router.get('/admin/debug-user/:userId', async (req, res) => {
     console.log('   By firebaseUid:', userByFirebaseUid ? 'Found' : 'Not found');
     console.log('   By email:', userByEmail ? 'Found' : 'Not found');
     
-    const allUsers = await User.find({}).limit(5).select('name email photoURL firebaseUid sessions');
+    // Get all users to see structure
+    const allUsers = await User.find({}).limit(5).select('name email photoURL firebaseUid');
+    console.log('📋 First 5 users in database:');
+    allUsers.forEach((user, index) => {
+      console.log(`   ${index + 1}. ${user.name} (${user.email})`);
+      console.log(`      photoURL: ${user.photoURL}`);
+      console.log(`      firebaseUid: ${user.firebaseUid}`);
+    });
     
     const user = userById || userByFirebaseUid || userByEmail;
     
@@ -947,9 +501,6 @@ router.get('/admin/debug-user/:userId', async (req, res) => {
            user.photoURL.includes('cloudinary') ? 'Cloudinary' : 
            'Other') : 'None',
         firebaseUid: user.firebaseUid,
-        balance: user.balance,
-        sessions: user.sessions || [],
-        sessionsCount: user.sessions ? user.sessions.length : 0,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt
       },
@@ -958,8 +509,7 @@ router.get('/admin/debug-user/:userId', async (req, res) => {
         name: u.name,
         email: u.email,
         photoURL: u.photoURL,
-        firebaseUid: u.firebaseUid,
-        sessionsCount: u.sessions ? u.sessions.length : 0
+        firebaseUid: u.firebaseUid
       }))
     });
     
@@ -971,23 +521,22 @@ router.get('/admin/debug-user/:userId', async (req, res) => {
     });
   }
 });
-
+// Add this route to userRoutes.js
 router.get('/debug-routes', (req, res) => {
   console.log('🔍 Incoming request to /debug-routes');
+  console.log('   Headers:', req.headers);
+  console.log('   Query:', req.query);
+  console.log('   Path:', req.path);
+  console.log('   Original URL:', req.originalUrl);
   
   res.json({
     routesAvailable: [
       'GET /api/users/profile',
       'PUT /api/users/profile',
       'GET /api/users/sessions',
-      'POST /api/users/complete-session',
-      'POST /api/users/reset-sessions',
       'GET /api/users/debug-routes',
-      'GET /api/users/debug-sessions',
-      'GET /api/users/debug-field-mapping',
       'GET /api/users/admin/debug-user/:userId',
       'GET /api/users/health',
-      'GET /api/users/count',
       'POST /api/users/upload-profile-picture'
     ],
     currentRequest: {
@@ -1001,203 +550,4 @@ router.get('/debug-routes', (req, res) => {
     }
   });
 });
-
-// ============ OTHER USER ROUTES ============
-
-router.put('/wallet-address', verifyFirebaseToken, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const { walletType, walletAddress } = req.body;
-    
-    console.log(`🔄 Updating ${walletType} wallet for user ${userId}: ${walletAddress}`);
-    
-    const user = await User.findOneAndUpdate(
-      { firebaseUid: userId },
-      { 
-        $set: { 
-          [`wallets.${walletType}`]: walletAddress,
-          updatedAt: new Date()
-        }
-      },
-      { new: true }
-    );
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    res.json({
-      success: true,
-      message: 'Wallet address updated successfully',
-      walletType: walletType,
-      walletAddress: walletAddress,
-      user: {
-        _id: user._id,
-        wallets: user.wallets
-      }
-    });
-    
-  } catch (error) {
-    console.error('❌ Error updating wallet address:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update wallet address',
-      error: error.message
-    });
-  }
-});
-
-router.put('/calculator-usage', verifyFirebaseToken, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    
-    console.log(`🔄 Incrementing calculator usage for user ${userId}`);
-    
-    const user = await User.findOneAndUpdate(
-      { firebaseUid: userId },
-      { 
-        $inc: { calculatorUsage: 1 },
-        $set: { updatedAt: new Date() }
-      },
-      { new: true }
-    );
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    res.json({
-      success: true,
-      message: 'Calculator usage incremented',
-      calculatorUsage: user.calculatorUsage || 1
-    });
-    
-  } catch (error) {
-    console.error('❌ Error incrementing calculator usage:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to increment calculator usage',
-      error: error.message
-    });
-  }
-});
-
-router.post('/sync', verifyFirebaseToken, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const firebaseEmail = req.user.email;
-    const firebaseName = req.user.name;
-    const firebasePhotoURL = req.user.picture;
-    
-    console.log('🔄 Syncing Firebase user to MongoDB:', {
-      userId,
-      email: firebaseEmail,
-      name: firebaseName,
-      photoURL: firebasePhotoURL
-    });
-    
-    const generateInviteCode = () => {
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      let code = '';
-      for (let i = 0; i < 8; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      return code;
-    };
-    
-    let user = await User.findOne({ firebaseUid: userId });
-    
-    if (!user && firebaseEmail) {
-      user = await User.findOne({ email: firebaseEmail });
-    }
-    
-    if (user) {
-      user.name = firebaseName || user.name;
-      user.photoURL = firebasePhotoURL || user.photoURL;
-      user.firebaseUid = userId;
-      user.updatedAt = new Date();
-      await user.save();
-      
-      console.log('✅ Existing user synced:', user._id);
-    } else {
-      user = await User.create({
-        firebaseUid: userId,
-        email: firebaseEmail,
-        name: firebaseName || '',
-        photoURL: firebasePhotoURL || '',
-        inviteCode: generateInviteCode(),
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
-      
-      console.log('✅ New user created:', user._id);
-    }
-    
-    res.json({
-      success: true,
-      message: 'User synced successfully',
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        photoURL: user.photoURL,
-        firebaseUid: user.firebaseUid,
-        inviteCode: user.inviteCode
-      }
-    });
-    
-  } catch (error) {
-    console.error('❌ Sync error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to sync user',
-      error: error.message
-    });
-  }
-});
-
-router.get('/details', verifyFirebaseToken, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    
-    const user = await User.findOne({ firebaseUid: userId });
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    res.json({
-      success: true,
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        photoURL: user.photoURL,
-        firebaseUid: user.firebaseUid,
-        balance: user.balance || 0,
-        inviteCode: user.inviteCode,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt
-      }
-    });
-    
-  } catch (error) {
-    console.error('❌ Error getting user details:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get user details',
-      error: error.message
-    });
-  }
-});
-
 module.exports = router;
