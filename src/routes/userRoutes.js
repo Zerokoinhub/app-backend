@@ -64,9 +64,6 @@ router.post('/fcm-token', verifyFirebaseToken, userController.updateFCMToken);
 router.delete('/fcm-token', verifyFirebaseToken, userController.removeFCMToken);
 router.put('/notification-settings', verifyFirebaseToken, userController.updateNotificationSettings);
 
-// ============ BALANCE UPDATE ============
-router.put('/update-balance', verifyFirebaseToken, userController.updateUserBalance);
-
 // ============ SESSION ROUTES ============
 
 // GET user sessions
