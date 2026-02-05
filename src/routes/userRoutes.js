@@ -26,15 +26,15 @@ router.get('/count', userController.getUserCount);
 router.get('/invite/:inviteCode', userController.getInviteDetails);
 
 // ============ SESSION ROUTES ============
-router.get('/sessions', verifyFirebaseToken, userController.getUserSessions);
-router.post('/complete-session', verifyFirebaseToken, userController.completeSession);
-router.post('/reset-sessions', verifyFirebaseToken, userController.resetUserSessions);
+// router.get('/sessions', verifyFirebaseToken, userController.getUserSessions);
+// router.post('/complete-session', verifyFirebaseToken, userController.completeSession);
+// router.post('/reset-sessions', verifyFirebaseToken, userController.resetUserSessions);
 
 // ============ PROFILE ROUTES ============
-router.get('/profile', verifyFirebaseToken, userController.getUserProfile);
+// router.get('/profile', verifyFirebaseToken, userController.getUserProfile);
 
-// ✅ UPDATED: PUT /profile ko controller mein move kiya
-router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
+// // ✅ UPDATED: PUT /profile ko controller mein move kiya
+// router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
 
 
 // ============ SESSION ROUTES ============
