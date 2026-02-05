@@ -446,7 +446,7 @@ exports.getUserCount = async (req, res) => {
   try {
     console.log('🔢 /api/users/count endpoint called');
     
-    const totalUsers = await User.countDocuments({});
+    const totalUsers = await User.countDocuments();
     
     console.log(`✅ Total users found: ${totalUsers}`);
     
