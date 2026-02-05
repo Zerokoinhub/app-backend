@@ -25,13 +25,13 @@ const generateInviteCode = () => {
 exports.healthCheck = async (req, res) => {
   try {
     res.status(200).json({
-      status: 'healthy',
+      status: "healthy",
       timestamp: new Date(),
-      service: 'zero-koin-backend'
+      service: "zero-koin-backend",
     });
   } catch (error) {
-    console.error('Health check error:', error);
-    res.status(500).json({ status: 'error', message: error.message });
+    console.error("Health check error:", error);
+    res.status(500).json({ status: "error", message: error.message });
   }
 };
 exports.registerUser = async (req, res) => {
@@ -80,12 +80,10 @@ exports.processReferral = async (req, res) => {
     referrer.balance = (referrer.balance || 0) + 50;
     await referrer.save();
 
-    res
-      .status(200)
-      .json({
-        message: "Referral processed",
-        recentAmount: referrer.recentAmount,
-      });
+    res.status(200).json({
+      message: "Referral processed",
+      recentAmount: referrer.recentAmount,
+    });
   } catch (error) {
     console.error("Referral error:", error.message);
     res
@@ -390,12 +388,10 @@ exports.updateWalletAddress = async (req, res) => {
       walletAddress !== "" &&
       (!walletAddress.startsWith("0x") || walletAddress.length !== 42)
     ) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "Invalid wallet address format. Must be a valid Ethereum address (0x...)",
-        });
+      return res.status(400).json({
+        message:
+          "Invalid wallet address format. Must be a valid Ethereum address (0x...)",
+      });
     }
 
     const user = await User.findOne({ firebaseUid: uid });
@@ -444,31 +440,29 @@ exports.updateWalletAddress = async (req, res) => {
 // new route for count
 exports.getUserCount = async (req, res) => {
   try {
-    console.log('🔢 /api/users/count endpoint called');
-    
+    console.log("🔢 /api/users/count endpoint called");
+
     const totalUsers = await User.countDocuments();
-    
+
     console.log(`✅ Total users found: ${totalUsers}`);
-    
+
     res.json({
       success: true,
       count: totalUsers,
       totalUsers: totalUsers,
       message: `Total users: ${totalUsers}`,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('❌ Error counting users:', error);
+    console.error("❌ Error counting users:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to count users',
+      error: "Failed to count users",
       details: error.message,
-      count: 0
+      count: 0,
     });
   }
-});
-
-
+};
 
 exports.resetUserSessions = async (req, res) => {
   try {
@@ -512,12 +506,10 @@ exports.incrementCalculatorUsage = async (req, res) => {
     res.status(200).json({ calculatorUsage: user.calculatorUsage });
   } catch (error) {
     console.error("Increment calculator usage error:", error.message);
-    res
-      .status(500)
-      .json({
-        message: "Error incrementing calculator usage",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Error incrementing calculator usage",
+      error: error.message,
+    });
   }
 };
 
@@ -676,12 +668,10 @@ exports.updateNotificationSettings = async (req, res) => {
     });
   } catch (error) {
     console.error("Update notification settings error:", error.message);
-    res
-      .status(500)
-      .json({
-        message: "Error updating notification settings",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Error updating notification settings",
+      error: error.message,
+    });
   }
 };
 
