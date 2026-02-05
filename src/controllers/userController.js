@@ -194,7 +194,119 @@ exports.getUserProfile = async (req, res) => {
       .json({ message: "Error fetching user profile", error: error.message });
   }
 };
-
+// ✅ PUT /profile logic controller mein daalo
+exports.updateUserProfile = async (req, res) => {
+  console.log('✅ PUT /profile called with data:', req.body);
+  
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'No data provided for update'
+    });
+  }
+  
+  try {
+    const userId = req.user.uid;
+    const firebaseEmail = req.user.email;
+    
+    const { displayName, photoURL, email } = req.body;
+    
+    console.log(`🔄 Updating user ${userId} with:`, {
+      displayName,
+      photoURL,
+      email: email || firebaseEmail
+    });
+    
+    const updateData = {
+      updatedAt: new Date()
+    };
+    
+    if (displayName !== undefined && displayName !== null && displayName !== '') {
+      updateData.name = displayName;
+      console.log(`   Mapping: displayName "${displayName}" → name "${displayName}"`);
+    }
+    
+    if (photoURL !== undefined && photoURL !== null && photoURL !== '') {
+      updateData.photoURL = photoURL;
+      console.log(`   Setting photoURL: ${photoURL}`);
+    }
+    
+    if (email !== undefined && email !== null && email !== '') {
+      updateData.email = email;
+      console.log(`   Setting email: ${email}`);
+    } else if (firebaseEmail) {
+      updateData.email = firebaseEmail;
+      console.log(`   Using Firebase email: ${firebaseEmail}`);
+    }
+    
+    updateData.firebaseUid = userId;
+    
+    console.log('📦 Final update data for MongoDB:', updateData);
+    
+    const updatedUser = await User.findOneAndUpdate(
+      { firebaseUid: userId },
+      { 
+        $set: updateData
+      },
+      { 
+        new: true,
+        upsert: true,
+        runValidators: true
+      }
+    );
+    
+    console.log('✅ MongoDB update successful!');
+    console.log('   User ID:', updatedUser._id);
+    console.log('   Name:', updatedUser.name);
+    console.log('   PhotoURL:', updatedUser.photoURL);
+    console.log('   Email:', updatedUser.email);
+    
+    return res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      updatedFields: {
+        name: updatedUser.name,
+        photoURL: updatedUser.photoURL,
+        email: updatedUser.email
+      },
+      user: {
+        _id: updatedUser._id,
+        name: updatedUser.name,
+        photoURL: updatedUser.photoURL,
+        email: updatedUser.email,
+        firebaseUid: updatedUser.firebaseUid
+      },
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ PUT /profile error:', error);
+    
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        error: error.message,
+        details: error.errors
+      });
+    }
+    
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Duplicate key error',
+        error: 'Email or firebaseUid already exists'
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update profile',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
 exports.getUserSessions = async (req, res) => {
   try {
     const { uid } = req.user;
