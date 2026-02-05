@@ -3,7 +3,6 @@ const router = express.Router();
 const multer = require('multer');
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
 const User = require('../models/User');
-const userController = require('../controllers/userController');
 
 console.log('✅ userRoutes.js loading with ALL routes');
 
@@ -49,10 +48,6 @@ router.get('/invite/:inviteCode', (req, res) => {
     message: 'Invite system placeholder' 
   });
 });
-
-
-// ============ BALANCE UPDATE ============
-router.put('/update-balance', verifyFirebaseToken, userController.updateUserBalance);
 
 // ============ SESSION ROUTES ============
 
