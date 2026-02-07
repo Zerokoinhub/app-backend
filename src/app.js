@@ -26,7 +26,33 @@ const sessionNotificationService = require("./services/sessionNotificationServic
 const autoNotificationService = require("./services/autoNotificationService");
 const admin = require("firebase-admin"); 
 
+
 const PORT = process.env.PORT || 3000;
+
+// ========== 🔥 FIREBASE ADMIN INITIALIZATION ==========
+console.log("🔥 Initializing Firebase Admin...");
+try {
+  if (!admin.apps.length) {
+    const serviceAccount = {
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    };
+    
+    console.log("🔥 Firebase Project ID:", serviceAccount.projectId ? "✓" : "✗");
+    console.log("🔥 Firebase Client Email:", serviceAccount.clientEmail ? "✓" : "✗");
+    
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "zerokoin-705c5.firebasestorage.app",
+    });
+    
+    console.log("✅ Firebase Admin initialized");
+  }
+} catch (error) {
+  console.error("❌ Firebase Admin initialization failed:", error.message);
+}
+// ======================================================
 
 const app = express();
 app.use(cors());
@@ -39,6 +65,28 @@ app.use(express.urlencoded({ extended: true }));
 // Just serve static files without creating directories
 app.use('/uploads', express.static('uploads'));
 console.log('✅ Serving static files from /uploads (if directory exists)');
+
+// ✅ Test endpoint for Firebase
+app.get("/api/test-firebase", async (req, res) => {
+  try {
+    const bucket = admin.storage().bucket();
+    const [files] = await bucket.getFiles({ prefix: 'profile_pics/' });
+    
+    res.json({
+      success: true,
+      message: "Firebase Storage is working",
+      bucket: bucket.name,
+      fileCount: files.length
+    });
+  } catch (error) {
+    console.error("Firebase test error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 
 app.use("/api/users", userRoutes);
 app.use("/api/token", tokenRoutes);
