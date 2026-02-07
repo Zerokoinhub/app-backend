@@ -64,7 +64,9 @@ connectDB()
   });
 
 app.get("/", (req, res) => {
-  res.json({ message: "Welcome to the API" });
+  res.json({ message: "Welcome to the API",
+           port: process.env.PORT
+           });
 });
 
 app.use((err, req, res, next) => {
