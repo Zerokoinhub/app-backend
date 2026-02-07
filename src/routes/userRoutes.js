@@ -51,12 +51,116 @@ router.put('/notification-settings', verifyFirebaseToken, userController.updateN
 router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
 
 // ✅ PROFILE PICTURE UPLOAD - USING MEMORY STORAGE
+// router.post('/upload-profile-picture', 
+//   verifyFirebaseToken,
+//   uploadProfilePicture.single('image'),
+//   userController.uploadProfilePicture
+// );
+
+// ✅ FIXED: Working profile picture upload to Firebase Storage
 router.post('/upload-profile-picture', 
   verifyFirebaseToken,
-  uploadProfilePicture.single('image'),
-  userController.uploadProfilePicture
+  upload.single('image'),
+  async (req, res) => {
+    try {
+      console.log('📤 Firebase Storage upload for:', req.user.uid);
+      
+      if (!req.file) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'No file uploaded' 
+        });
+      }
+      
+      const userId = req.user.uid;
+      const fileName = `${userId}_${Date.now()}_${req.file.originalname}`;
+      
+      console.log('   File details:', {
+        name: fileName,
+        size: req.file.size,
+        type: req.file.mimetype
+      });
+      
+      // ✅ Get Firebase Storage bucket
+      const bucket = admin.storage().bucket();
+      
+      // ✅ Create a file reference
+      const file = bucket.file(`profile_pics/${fileName}`);
+      
+      // ✅ Upload the buffer to Firebase Storage
+      await file.save(req.file.buffer, {
+        metadata: {
+          contentType: req.file.mimetype,
+          metadata: {
+            firebaseStorageDownloadTokens: userId,
+            uploadedBy: userId,
+            uploadedAt: new Date().toISOString()
+          }
+        },
+        public: true
+      });
+      
+      // ✅ Generate public URL with token
+      const [metadata] = await file.getMetadata();
+      const token = metadata.metadata.firebaseStorageDownloadTokens || userId;
+      
+      const photoURL = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media&token=${token}`;
+      
+      console.log('✅ File uploaded to Firebase Storage:', photoURL);
+      
+      // ✅ Update user in MongoDB
+      const updatedUser = await User.findOneAndUpdate(
+        { firebaseUid: userId },
+        { 
+          $set: { 
+            photoURL: photoURL,
+            updatedAt: new Date(),
+            email: req.user.email
+          }
+        },
+        { 
+          new: true,
+          upsert: true 
+        }
+      );
+      
+      console.log('✅ MongoDB updated with Firebase Storage URL');
+      
+      // Return response
+      res.json({ 
+        success: true, 
+        message: 'Profile picture uploaded to Firebase Storage',
+        photoURL: photoURL,
+        photoUrl: photoURL,
+        storage: 'firebase',
+        fileInfo: {
+          name: fileName,
+          size: req.file.size,
+          contentType: req.file.mimetype
+        }
+      });
+      
+    } catch (error) {
+      console.error('❌ Firebase Storage upload error:', error);
+      
+      // Check if it's Firebase Admin error
+      if (error.code === 'app/no-app') {
+        return res.status(500).json({
+          success: false,
+          message: 'Firebase Admin not configured',
+          error: 'FIREBASE_SERVICE_ACCOUNT environment variable missing'
+        });
+      }
+      
+      res.status(500).json({
+        success: false,
+        message: 'Failed to upload to Firebase Storage',
+        error: error.message,
+        code: error.code
+      });
+    }
+  }
 );
-
 // Get user details
 router.get('/details', verifyFirebaseToken, userController.getUserDetails);
 
