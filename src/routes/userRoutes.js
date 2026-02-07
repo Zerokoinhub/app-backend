@@ -727,7 +727,6 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }
 });
-
 router.post('/upload-profile-picture', 
   verifyFirebaseToken,
   upload.single('image'),
@@ -745,9 +744,26 @@ router.post('/upload-profile-picture',
       
       console.log('📤 Uploading profile picture for:', userId);
       
+      // Generate unique filename
       const fileName = `${userId}_${Date.now()}_${req.file.originalname}`;
-      const photoURL = `https://storage.googleapis.com/zerokoin-705c5.firebasestorage.app/profile_pics/${fileName}`;
       
+      // Use your server's URL for the uploaded file
+      const photoURL = `${req.protocol}://${req.get('host')}/uploads/${fileName}`;
+      
+      // Move file to uploads directory with new name
+      const fs = require('fs').promises;
+      const path = require('path');
+      
+      // Ensure uploads directory exists
+      await fs.mkdir('uploads', { recursive: true });
+      
+      // Move/Rename the file
+      const newPath = path.join('uploads', fileName);
+      await fs.rename(req.file.path, newPath);
+      
+      console.log('✅ File saved locally:', newPath);
+      
+      // Update user in MongoDB
       const updatedUser = await User.findOneAndUpdate(
         { firebaseUid: userId },
         { 
@@ -771,7 +787,8 @@ router.post('/upload-profile-picture',
         photoURL: photoURL,
         photoUrl: photoURL,
         file: {
-          name: req.file.originalname,
+          name: fileName,
+          originalName: req.file.originalname,
           size: req.file.size,
           type: req.file.mimetype,
           url: photoURL
@@ -786,6 +803,12 @@ router.post('/upload-profile-picture',
       
     } catch (error) {
       console.error('❌ Upload error:', error);
+      
+      // Clean up temp file if exists
+      if (req.file && req.file.path) {
+        fs.unlink(req.file.path, () => {});
+      }
+      
       res.status(500).json({
         success: false,
         message: 'Failed to upload profile picture',
@@ -794,7 +817,6 @@ router.post('/upload-profile-picture',
     }
   }
 );
-
 // ============ DEBUG ROUTES ============
 
 router.get('/debug-field-mapping', verifyFirebaseToken, async (req, res) => {
