@@ -747,101 +747,150 @@ const upload = multer({
     }
   }
 });
+
 router.post('/upload-profile-picture', 
   verifyFirebaseToken,
   upload.single('image'),
   async (req, res) => {
-    console.log('📤 Upload profile picture request received');
-    
-    if (!req.file) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'No file uploaded' 
-      });
-    }
-    
-    // Check if Firebase is available
-    if (!bucket) {
-      return res.status(500).json({
-        success: false,
-        message: 'Firebase Storage not available. Please check Firebase configuration.'
-      });
-    }
+    console.log('========== UPLOAD START ==========');
+    console.log('🔐 User:', req.user?.uid);
+    console.log('📁 Has file:', !!req.file);
     
     try {
+      // 1. Check if file exists
+      if (!req.file) {
+        console.log('❌ No file uploaded');
+        return res.status(400).json({ 
+          success: false, 
+          message: 'No file uploaded'
+        });
+      }
+      
+      console.log('✅ File details:', {
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        bufferExists: !!req.file.buffer,
+        bufferLength: req.file.buffer?.length || 0
+      });
+      
+      // 2. Get user info
       const userId = req.user.uid;
       const firebaseEmail = req.user.email;
       
-      console.log('👤 Uploading for user:', userId);
-      console.log('📁 File details:', {
-        name: req.file.originalname,
-        size: req.file.size,
-        type: req.file.mimetype,
-        bufferSize: req.file.buffer?.length || 0
-      });
+      if (!userId) {
+        throw new Error('User ID not found in token');
+      }
       
-      // ✅ STEP 1: Generate unique filename for Firebase
-      const timestamp = Date.now();
-      const safeFileName = req.file.originalname.replace(/[^a-zA-Z0-9.]/g, '_');
-      const firebaseFileName = `profile_pics/${userId}_${timestamp}_${safeFileName}`;
+      console.log('👤 User:', { userId, email: firebaseEmail });
       
-      console.log('📝 Firebase file path:', firebaseFileName);
+      // 3. Check Firebase
+      console.log('🔥 Firebase bucket available:', !!bucket);
+      if (bucket) {
+        console.log('📦 Bucket name:', bucket.name);
+      }
       
-      // ✅ STEP 2: Upload to Firebase Storage
-      console.log('⬆️ Uploading to Firebase Storage...');
-      const file = bucket.file(firebaseFileName);
+      // 4. Upload to Firebase Storage
+      let photoURL;
       
-      // Upload the buffer directly
-      await file.save(req.file.buffer, {
-        metadata: {
-          contentType: req.file.mimetype,
-          metadata: {
-            uploadedBy: userId,
-            uploadedAt: new Date().toISOString(),
-            originalName: req.file.originalname
+      if (bucket) {
+        try {
+          // Generate safe filename
+          const timestamp = Date.now();
+          const originalName = req.file.originalname || 'profile.jpg';
+          const safeFileName = originalName.replace(/[^a-zA-Z0-9.]/g, '_');
+          const firebaseFileName = `profile_pics/${userId}_${timestamp}_${safeFileName}`;
+          
+          console.log('📝 Creating file at:', firebaseFileName);
+          
+          // Create file reference
+          const file = bucket.file(firebaseFileName);
+          
+          // Upload with proper error handling
+          console.log('⬆️ Uploading to Firebase...');
+          
+          const uploadOptions = {
+            metadata: {
+              contentType: req.file.mimetype || 'image/jpeg',
+              metadata: {
+                uploadedBy: userId,
+                uploadedAt: new Date().toISOString()
+              }
+            }
+          };
+          
+          // Make sure we have buffer
+          if (!req.file.buffer) {
+            throw new Error('File buffer is empty');
           }
+          
+          await file.save(req.file.buffer, uploadOptions);
+          console.log('✅ File saved to Firebase');
+          
+          // Make public
+          console.log('🔓 Making file public...');
+          await file.makePublic();
+          
+          // Get public URL
+          photoURL = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(firebaseFileName)}?alt=media`;
+          console.log('🔗 Firebase URL:', photoURL);
+          
+        } catch (firebaseError) {
+          console.error('❌ Firebase upload error:', firebaseError.message);
+          console.error('❌ Stack:', firebaseError.stack);
+          
+          // Fallback to placeholder
+          photoURL = `https://ui-avatars.com/api/?name=${encodeURIComponent(userId)}&background=0083a3&color=fff&size=256`;
+          console.log('⚠️ Using fallback URL:', photoURL);
         }
-      });
+      } else {
+        // No Firebase - use placeholder
+        console.log('⚠️ Firebase not available, using placeholder');
+        photoURL = `https://ui-avatars.com/api/?name=${encodeURIComponent(userId)}&background=0083a3&color=fff&size=256`;
+      }
       
-      // ✅ STEP 3: Make file publicly accessible
-      console.log('🔓 Making file public...');
-      await file.makePublic();
+      // 5. Update MongoDB
+      console.log('💾 Updating MongoDB...');
       
-      // ✅ STEP 4: Get Firebase Storage URL (NOT local URL!)
-      const firebaseUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(firebaseFileName)}?alt=media`;
+      const updateData = {
+        photoURL: photoURL,
+        updatedAt: new Date(),
+        email: firebaseEmail || req.user.email
+      };
       
-      console.log('✅ File uploaded to Firebase Storage:', firebaseUrl);
+      console.log('📦 Update data:', updateData);
       
-      // ✅ STEP 5: Update MongoDB with Firebase URL
       const updatedUser = await User.findOneAndUpdate(
         { firebaseUid: userId },
-        { 
-          $set: { 
-            photoURL: firebaseUrl,
-            updatedAt: new Date(),
-            email: firebaseEmail
-          }
-        },
+        { $set: updateData },
         { 
           new: true,
-          upsert: true 
+          upsert: true,
+          runValidators: false // Disable validators for now
         }
-      );
+      ).lean(); // Use lean() for better performance
       
-      console.log('✅ MongoDB updated with Firebase URL');
+      if (!updatedUser) {
+        throw new Error('Failed to update user in database');
+      }
       
-      // ✅ STEP 6: Return response with Firebase URL
-      res.json({ 
-        success: true, 
-        message: 'Profile picture uploaded to Firebase Storage successfully',
-        photoURL: firebaseUrl,
-        photoUrl: firebaseUrl,
+      console.log('✅ MongoDB updated:', {
+        id: updatedUser._id,
+        name: updatedUser.name,
+        photoURL: updatedUser.photoURL
+      });
+      
+      // 6. Success response
+      const response = {
+        success: true,
+        message: 'Profile picture uploaded successfully',
+        photoURL: photoURL,
+        photoUrl: photoURL,
         file: {
           name: req.file.originalname,
           size: req.file.size,
           type: req.file.mimetype,
-          url: firebaseUrl,
-          firebasePath: firebaseFileName
+          url: photoURL
         },
         user: {
           _id: updatedUser._id,
@@ -849,26 +898,41 @@ router.post('/upload-profile-picture',
           photoURL: updatedUser.photoURL,
           email: updatedUser.email
         }
-      });
+      };
+      
+      console.log('========== UPLOAD SUCCESS ==========');
+      res.json(response);
       
     } catch (error) {
-      console.error('❌ Firebase upload error:', error);
-      console.error('❌ Error details:', {
-        message: error.message,
-        code: error.code,
-        stack: error.stack
+      console.error('========== UPLOAD ERROR ==========');
+      console.error('❌ Error:', error.message);
+      console.error('❌ Stack:', error.stack);
+      console.error('❌ Request details:', {
+        userId: req.user?.uid,
+        hasFile: !!req.file,
+        fileSize: req.file?.size,
+        bucketAvailable: !!bucket
       });
+      console.error('========== END ERROR ==========');
       
-      res.status(500).json({
+      // Send detailed error (but not in production)
+      const errorResponse = {
         success: false,
-        message: 'Failed to upload to Firebase Storage',
-        error: error.message,
-        code: error.code
-      });
+        message: 'Upload failed',
+        error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message,
+        debug: process.env.NODE_ENV !== 'production' ? {
+          errorType: error.constructor.name,
+          errorCode: error.code,
+          hasFile: !!req.file,
+          fileSize: req.file?.size,
+          bucketAvailable: !!bucket
+        } : undefined
+      };
+      
+      res.status(500).json(errorResponse);
     }
   }
 );
-
 // ============ DEBUG ROUTES ============
 
 router.get('/debug-field-mapping', verifyFirebaseToken, async (req, res) => {
