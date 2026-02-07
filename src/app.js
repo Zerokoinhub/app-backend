@@ -24,6 +24,7 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const timeRoutes = require("./routes/timeRoutes");
 const sessionNotificationService = require("./services/sessionNotificationService");
 const autoNotificationService = require("./services/autoNotificationService");
+const admin = require("firebase-admin"); 
 
 const PORT = process.env.PORT || 3000;
 
