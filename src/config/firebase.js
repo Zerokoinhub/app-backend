@@ -18,6 +18,7 @@ try {
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "zerokoin-705c5.firebasestorage.app"  // ✅ YEH ADD KAR!
 });
 
 console.log("Firebase Admin initialized successfully");
