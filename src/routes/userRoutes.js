@@ -23,13 +23,43 @@ const upload = multer({
   }
 });
 
-// ✅ WORKING Firebase Storage Profile Picture Upload
+// ✅ WORKING Firebase Storage Profile Picture Upload - COMPLETE FIXED VERSION
 router.post('/upload-profile-picture', 
   verifyFirebaseToken,
-  upload.single('profilePicture'), // Changed from 'image' to 'profilePicture'
+  (req, res, next) => {
+    // Pehle 'profilePicture' field check karo
+    const profilePicUpload = upload.single('profilePicture');
+    
+    profilePicUpload(req, res, (err) => {
+      if (!err && req.file) {
+        // Mil gaya profilePicture se
+        console.log('✅ File received via field: profilePicture');
+        return next();
+      }
+      
+      // Nahi mila toh 'file' field check karo
+      console.log('⚠️ profilePicture field not found, trying file field...');
+      const fileUpload = upload.single('file');
+      
+      fileUpload(req, res, (err2) => {
+        if (!err2 && req.file) {
+          console.log('✅ File received via field: file');
+          return next();
+        }
+        
+        // Dono fields se nahi mila
+        return res.status(400).json({ 
+          success: false, 
+          message: 'No file uploaded. Expected field: profilePicture or file' 
+        });
+      });
+    });
+  },
   async (req, res) => {
     try {
       console.log('📤 Starting Firebase Storage upload...');
+      console.log('📁 File field name used:', req.file.fieldname);
+      console.log('👤 User:', req.user.uid);
       
       if (!req.file) {
         return res.status(400).json({ 
@@ -47,18 +77,18 @@ router.post('/upload-profile-picture',
       }
       
       const userId = req.user.uid;
-      const userEmail = req.user.email;
+      const userEmail = req.user.email || '';
       
       console.log('   Uploading for user:', userId);
       console.log('   File details:', {
         originalName: req.file.originalname,
         size: req.file.size,
         mimetype: req.file.mimetype,
-        bufferSize: req.file.buffer.length
+        fieldname: req.file.fieldname
       });
       
       // ✅ Generate unique filename
-      const fileExtension = req.file.originalname.split('.').pop();
+      const fileExtension = req.file.originalname.split('.').pop() || 'jpg';
       const fileName = `profile_${userId}_${Date.now()}.${fileExtension}`;
       const filePath = `profile_pictures/${fileName}`;
       
@@ -82,40 +112,44 @@ router.post('/upload-profile-picture',
             userEmail: userEmail
           }
         },
-        public: false // Keep files private, access via token
+        public: false
       });
       
-      // ✅ Set file to be publicly readable (optional)
+      // ✅ Set file to be publicly readable
       await file.makePublic();
       
-      // ✅ Generate public URL with token
+      // ✅ Generate public URL
       const photoURL = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filePath)}?alt=media&token=${downloadToken}`;
       
-      // Alternative URL format (also works):
-      // const photoURL = `https://storage.googleapis.com/${bucket.name}/${filePath}?token=${downloadToken}`;
-      
-      console.log('✅ File uploaded successfully:', photoURL);
+      console.log('✅ File uploaded successfully');
+      console.log('📎 URL:', photoURL);
       
       // ✅ Update user in MongoDB
-      const updatedUser = await User.findOneAndUpdate(
-        { firebaseUid: userId },
-        { 
-          $set: { 
-            photoURL: photoURL,
-            updatedAt: new Date(),
-            email: userEmail
+      try {
+        const updatedUser = await User.findOneAndUpdate(
+          { firebaseUid: userId },
+          { 
+            $set: { 
+              photoURL: photoURL,
+              profilePicture: photoURL,
+              updatedAt: new Date(),
+              email: userEmail
+            }
+          },
+          { 
+            new: true,
+            upsert: false 
           }
-        },
-        { 
-          new: true,
-          upsert: false 
+        );
+        
+        if (!updatedUser) {
+          console.warn('⚠️ User not found in MongoDB for firebaseUid:', userId);
+        } else {
+          console.log('✅ User updated in MongoDB');
         }
-      );
-      
-      if (!updatedUser) {
-        console.warn('⚠️ User not found in MongoDB for firebaseUid:', userId);
-      } else {
-        console.log('✅ User updated in MongoDB');
+      } catch (dbError) {
+        console.error('❌ MongoDB update error:', dbError);
+        // Continue - photo uploaded successfully even if DB update fails
       }
       
       // ✅ Return success response
@@ -163,7 +197,6 @@ router.post('/upload-profile-picture',
     }
   }
 );
-
 // ✅ Alternative: Simple upload endpoint (for testing)
 router.post('/upload-simple', 
   verifyFirebaseToken,
