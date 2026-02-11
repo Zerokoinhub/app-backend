@@ -3,7 +3,7 @@ const router = express.Router();
 const userController = require('../controllers/userController');
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
 const User = require('../models/User'); // Make sure to import User model
-const admin = require('../config/firebase-admin'); // Import Firebase Admin
+const admin = require('../config/firebase'); // Import Firebase Admin
 
 // Configure Multer for memory storage
 const multer = require('multer');
