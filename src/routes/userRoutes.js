@@ -22,7 +22,7 @@ const upload = multer({
 });
 
 // ============================================
-// ✅ PROFILE PICTURE UPLOAD - COMPLETE IN ROUTE
+// ✅ PROFILE PICTURE UPLOAD - SINGLE ROUTE
 // ============================================
 router.post('/upload-profile-picture', 
   verifyFirebaseToken,
@@ -36,11 +36,12 @@ router.post('/upload-profile-picture',
     imageUpload(req, res, (err) => {
       if (!err && req.file) {
         console.log('✅ File received via field: image (Flutter)');
+        console.log('📁 File name:', req.file.originalname);
+        console.log('📁 File size:', req.file.size);
         return next();
       }
       
-      // FALLBACK
-      console.log('❌ image field not found! Flutter must send field: image');
+      console.log('❌ image field not found!');
       return res.status(400).json({ 
         success: false, 
         message: 'No file uploaded. Expected field: image' 
@@ -71,10 +72,10 @@ router.post('/upload-profile-picture',
       const userId = req.user.uid;
       const userEmail = req.user.email || '';
       
-      // ✅ Generate filename and path
+      // ✅ Generate filename and path - CORRECT FOLDER NAME
       const fileExtension = req.file.originalname.split('.').pop() || 'jpg';
       const fileName = `${userId}_${Date.now()}.${fileExtension}`;
-      const filePath = `profile_pics/${fileName}`;  // CORRECT FOLDER NAME
+      const filePath = `profile_pics/${fileName}`;
       
       console.log('   File path:', filePath);
       
@@ -108,38 +109,30 @@ router.post('/upload-profile-picture',
       console.log('✅ File uploaded successfully');
       console.log('📎 URL:', photoURL);
       
-      // ============================================
-      // ✅ DATABASE UPDATE - DIRECTLY IN ROUTE
-      // ============================================
-      try {
-        let user = await User.findOne({ firebaseUid: userId });
-        
-        if (!user) {
-          console.log('   Creating new user entry...');
-          user = new User({
-            firebaseUid: userId,
-            email: userEmail,
-            name: req.user.name || '',
-            photoURL: photoURL,
-            profilePicture: photoURL,
-            createdAt: new Date(),
-            updatedAt: new Date()
-          });
-        } else {
-          console.log('   Updating existing user:', user.email);
-          user.photoURL = photoURL;
-          user.profilePicture = photoURL;
-          user.updatedAt = new Date();
-          if (!user.email && userEmail) user.email = userEmail;
-        }
-        
-        await user.save();
-        console.log('   ✅ User saved successfully');
-        
-      } catch (dbError) {
-        console.error('❌ MongoDB update error:', dbError);
-        // Continue - photo uploaded successfully even if DB update fails
+      // ✅ Update user in MongoDB - DIRECTLY IN ROUTE
+      let user = await User.findOne({ firebaseUid: userId });
+      
+      if (!user) {
+        console.log('   Creating new user entry...');
+        user = new User({
+          firebaseUid: userId,
+          email: userEmail,
+          name: req.user.name || '',
+          photoURL: photoURL,
+          profilePicture: photoURL,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      } else {
+        console.log('   Updating existing user:', user.email);
+        user.photoURL = photoURL;
+        user.profilePicture = photoURL;
+        user.updatedAt = new Date();
+        if (!user.email && userEmail) user.email = userEmail;
       }
+      
+      await user.save();
+      console.log('   ✅ User saved successfully');
       
       // ✅ Return success response
       res.status(200).json({ 
@@ -158,6 +151,7 @@ router.post('/upload-profile-picture',
       
     } catch (error) {
       console.error('❌ Firebase Storage upload error:', error);
+      console.error('   Error stack:', error.stack);
       
       res.status(500).json({
         success: false,
@@ -169,7 +163,7 @@ router.post('/upload-profile-picture',
 );
 
 // ============================================
-// ✅ OTHER ROUTES (import from controller)
+// ✅ OTHER ROUTES - IMPORT FROM CONTROLLER
 // ============================================
 const userController = require('../controllers/userController');
 const { getUserSessions, unlockNextSession, completeSession } = require('../controllers/userController');
