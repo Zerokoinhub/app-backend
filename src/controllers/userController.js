@@ -365,10 +365,17 @@ exports.updateWalletAddress = async (req, res) => {
 exports.getUserCount = async (req, res) => {
   try {
     const count = await User.countDocuments();
-    res.status(200).json({ count });
+    res.status(200).json({ 
+      success: true,      // ✅ ADDED!
+      count: count 
+    });
   } catch (error) {
     console.error('Get user count error:', error.message);
-    res.status(500).json({ message: 'Error getting user count', error: error.message });
+    res.status(500).json({ 
+      success: false,     // ✅ ADDED!
+      message: 'Error getting user count', 
+      error: error.message 
+    });
   }
 };
 
