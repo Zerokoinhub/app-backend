@@ -24,88 +24,12 @@ const upload = multer({
 });
 
 // ✅ WORKING Firebase Storage Profile Picture Upload - COMPLETE FIXED VERSION
-// ✅ FINAL FIXED VERSION - Flutter 'image' field + correct folder name + URL format
-router.post('/upload-profile-picture', 
+// CLOUDINARY VERSION - Agar Cloudinary use karna hai
+router.post('/upload-profile-picture',
   verifyFirebaseToken,
-  (req, res, next) => {
-    console.log('📤 Upload request received');
-    console.log('🔍 Content-Type:', req.headers['content-type']);
-    
-    // FLUTTER 'image' FIELD BHEJ RAHA HAI - YEH PEHLE TRY KARO
-    const imageUpload = upload.single('image');
-    
-    imageUpload(req, res, (err) => {
-      if (!err && req.file) {
-        console.log('✅ File received via field: image (Flutter)');
-        return next();
-      }
-      
-      // FALLBACK 1: profilePicture field
-      console.log('⚠️ image field not found, trying profilePicture...');
-      const profileUpload = upload.single('profilePicture');
-      
-      profileUpload(req, res, (err2) => {
-        if (!err2 && req.file) {
-          console.log('✅ File received via field: profilePicture');
-          return next();
-        }
-        
-        // FALLBACK 2: file field
-        console.log('⚠️ profilePicture field not found, trying file...');
-        const fileUpload = upload.single('file');
-        
-        fileUpload(req, res, (err3) => {
-          if (!err3 && req.file) {
-            console.log('✅ File received via field: file');
-            return next();
-          }
-          
-          // KOI FIELD NAHI MILI
-          console.log('❌ No file received. Errors:', { 
-            image: err?.message, 
-            profile: err2?.message, 
-            file: err3?.message 
-          });
-          
-          return res.status(400).json({ 
-            success: false, 
-            message: 'No file uploaded. Expected field: image (Flutter), profilePicture, or file' 
-          });
-        });
-      });
-    });
-  },
-  async (req, res) => {
-    try {
-      console.log('📤 Starting Firebase Storage upload...');
-      console.log('📁 File field name used:', req.file.fieldname);
-      console.log('👤 User:', req.user.uid);
-      
-      if (!req.file) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'No file uploaded' 
-        });
-      }
-      
-      // Check file type
-      if (!req.file.mimetype.startsWith('image/')) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Only image files are allowed' 
-        });
-      }
-      
-      const userId = req.user.uid;
-      const userEmail = req.user.email || '';
-      
-      console.log('   Uploading for user:', userId);
-      console.log('   File details:', {
-        originalName: req.file.originalname,
-        size: req.file.size,
-        mimetype: req.file.mimetype,
-        fieldname: req.file.fieldname
-      });
+  upload.single('image'),
+  userController.uploadProfilePicture  // Cloudinary controller
+);
       
       // ============ 🔥 FIXED: CORRECT FOLDER NAME ============
       // ✅ Sample URL: profile_pics/filename.jpg
