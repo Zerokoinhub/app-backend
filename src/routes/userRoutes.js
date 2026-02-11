@@ -177,6 +177,7 @@ router.post('/complete-session', verifyFirebaseToken, completeSession);
 router.post('/reset-sessions', verifyFirebaseToken, userController.resetUserSessions);
 router.post('/sync', verifyFirebaseToken, userController.syncFirebaseUser);
 router.get('/profile', verifyFirebaseToken, userController.getUserProfile);
+router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
 router.put('/wallet-address', verifyFirebaseToken, userController.updateWalletAddress);
 router.get('/count', userController.getUserCount);
 router.put('/calculator-usage', verifyFirebaseToken, userController.incrementCalculatorUsage);
