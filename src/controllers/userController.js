@@ -67,9 +67,6 @@ exports.processReferral = async (req, res) => {
   }
 };
 
-// ============================================
-// ✅ NEW USER SYNC - SESSIONS PROPERLY INITIALIZED
-// ============================================
 exports.syncFirebaseUser = async (req, res) => {
   try {
     const { uid, email, name } = req.user;
@@ -104,74 +101,22 @@ exports.syncFirebaseUser = async (req, res) => {
         }
       });
     } else {
-      console.log('✨ Creating NEW user with sessions...');
+      console.log('✨ Creating new user for Firebase UID:', uid);
       let inviteCode = generateInviteCode();
       while (await User.findOne({ inviteCode })) {
         inviteCode = generateInviteCode();
       }
 
-      // ✅ NEW USER - PROPER SESSIONS WITH TIMERS
-      const now = new Date();
-      
       const newUser = new User({
         firebaseUid: uid,
         name,
         email,
         inviteCode,
-        country,
-        balance: 0,
-        recentAmount: 0,
-        sessions: [
-          {
-            sessionNumber: 1,
-            unlockedAt: now,                    // ✅ SESSION 1 - IMMEDIATELY UNLOCKED
-            completedAt: null,
-            isLocked: false,                   // ✅ UNLOCKED
-            nextUnlockAt: null,               // ✅ NO TIMER
-            isClaimed: false,
-            createdAt: now,
-            lastUpdated: now
-          },
-          {
-            sessionNumber: 2,
-            unlockedAt: null,
-            completedAt: null,
-            isLocked: true,                   // ✅ LOCKED
-            nextUnlockAt: new Date(now.getTime() + SESSION_INTERVAL), // +6 hours
-            isClaimed: false,
-            createdAt: now,
-            lastUpdated: now
-          },
-          {
-            sessionNumber: 3,
-            unlockedAt: null,
-            completedAt: null,
-            isLocked: true,
-            nextUnlockAt: new Date(now.getTime() + (2 * SESSION_INTERVAL)), // +12 hours
-            isClaimed: false,
-            createdAt: now,
-            lastUpdated: now
-          },
-          {
-            sessionNumber: 4,
-            unlockedAt: null,
-            completedAt: null,
-            isLocked: true,
-            nextUnlockAt: new Date(now.getTime() + (3 * SESSION_INTERVAL)), // +18 hours
-            isClaimed: false,
-            createdAt: now,
-            lastUpdated: now
-          }
-        ]
+        country
       });
 
       await newUser.save();
-      console.log('✅ New user created successfully with invite code:', inviteCode);
-      console.log('📊 Sessions initialized:', newUser.sessions.map(s => ({
-        num: s.sessionNumber,
-        locked: s.isLocked,
-        unlockAt: s.nextUnlockAt?.toISOString() || null
-      })));
+      console.log('✅ User created successfully with invite code:', inviteCode);
 
       res.status(201).json({
         message: 'User created successfully',
@@ -221,9 +166,6 @@ exports.getUserProfile = async (req, res) => {
   }
 };
 
-// ============================================
-// ✅ GET USER SESSIONS - WITH AUTO-UNLOCK CHECK
-// ============================================
 exports.getUserSessions = async (req, res) => {
   try {
     const { uid } = req.user;
@@ -232,70 +174,30 @@ exports.getUserSessions = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // ✅ AGAR SESSIONS NAHI HAIN TOH INITIALIZE KARO
     if (!user.sessions || user.sessions.length === 0) {
-      const now = new Date();
-      user.sessions = [
-        {
-          sessionNumber: 1,
-          unlockedAt: now,
+      user.sessions = [];
+      for (let i = 1; i <= SESSIONS_PER_DAY; i++) {
+        user.sessions.push({
+          sessionNumber: i,
+          unlockedAt: i === 1 ? new Date() : null,
           completedAt: null,
-          isLocked: false,
           nextUnlockAt: null,
           isClaimed: false,
-          createdAt: now,
-          lastUpdated: now
-        },
-        {
-          sessionNumber: 2,
-          unlockedAt: null,
-          completedAt: null,
-          isLocked: true,
-          nextUnlockAt: new Date(now.getTime() + SESSION_INTERVAL),
-          isClaimed: false,
-          createdAt: now,
-          lastUpdated: now
-        },
-        {
-          sessionNumber: 3,
-          unlockedAt: null,
-          completedAt: null,
-          isLocked: true,
-          nextUnlockAt: new Date(now.getTime() + (2 * SESSION_INTERVAL)),
-          isClaimed: false,
-          createdAt: now,
-          lastUpdated: now
-        },
-        {
-          sessionNumber: 4,
-          unlockedAt: null,
-          completedAt: null,
-          isLocked: true,
-          nextUnlockAt: new Date(now.getTime() + (3 * SESSION_INTERVAL)),
-          isClaimed: false,
-          createdAt: now,
-          lastUpdated: now
-        }
-      ];
+          isLocked: i > 1
+        });
+      }
       await user.save();
-      console.log('✅ Sessions initialized for existing user');
     }
 
-    // ✅ CHECK FOR EXPIRED TIMERS AND AUTO-UNLOCK
     const now = new Date();
     let sessionsUpdated = false;
 
     for (let session of user.sessions) {
-      if (session.isLocked && session.nextUnlockAt) {
-        const unlockTime = new Date(session.nextUnlockAt);
-        if (now >= unlockTime) {
-          session.isLocked = false;
-          session.unlockedAt = new Date(now);
-          session.nextUnlockAt = null;
-          session.lastUpdated = now;
-          sessionsUpdated = true;
-          console.log(`🔓 Auto-unlocked session ${session.sessionNumber} at ${now.toISOString()}`);
-        }
+      if (session.isLocked && session.nextUnlockAt && now >= session.nextUnlockAt) {
+        session.isLocked = false;
+        session.unlockedAt = new Date();
+        session.nextUnlockAt = null;
+        sessionsUpdated = true;
       }
     }
 
@@ -303,18 +205,10 @@ exports.getUserSessions = async (req, res) => {
       await user.save();
     }
 
-    res.status(200).json({ 
-      success: true,
-      sessions: user.sessions 
-    });
-    
+    res.status(200).json({ sessions: user.sessions });
   } catch (error) {
     console.error('Get user sessions error:', error.message);
-    res.status(500).json({ 
-      success: false,
-      message: 'Error fetching user sessions', 
-      error: error.message 
-    });
+    res.status(500).json({ message: 'Error fetching user sessions', error: error.message });
   }
 };
 
@@ -344,9 +238,6 @@ exports.unlockNextSession = async (req, res) => {
   }
 };
 
-// ============================================
-// ✅ COMPLETE SESSION - WITH PROPER TIMERS (CLAIM TIME + INTERVAL)
-// ============================================
 exports.completeSession = async (req, res) => {
   try {
     const { uid } = req.user;
@@ -374,183 +265,55 @@ exports.completeSession = async (req, res) => {
       return res.status(400).json({ message: 'Session is already completed' });
     }
 
-    // ✅ COMPLETE CURRENT SESSION
-    const claimTime = new Date(); // Jab user ne claim kiya
-    session.completedAt = claimTime;
+    session.completedAt = new Date();
     session.isClaimed = true;
-    session.lastUpdated = claimTime;
-
-    // ✅ ADD COINS
-    user.balance = (user.balance || 0) + 30;
-    user.recentAmount = 30;
-    user.lastSessionCompletedAt = claimTime;
 
     let nextSessionNumber;
-    
-    // ========== SESSION 4 COMPLETE - RESET ALL SESSIONS ==========
     if (parseInt(sessionNumber) === 4) {
-      console.log('🔄 Session 4 completed - resetting all sessions at:', claimTime.toISOString());
       nextSessionNumber = 1;
-      
-      // Reset all sessions with proper timers based on CLAIM TIME
-      user.sessions.forEach((s, index) => {
-        const sessionNum = index + 1;
-        
-        if (sessionNum === 1) {
-          // ✅ SESSION 1 - IMMEDIATELY UNLOCKED, NO TIMER
-          s.isLocked = false;
-          s.unlockedAt = claimTime;
-          s.nextUnlockAt = null;
-        } else {
-          // ✅ SESSIONS 2,3,4 - LOCKED WITH TIMERS (claimTime + (n-1)*6h)
+      user.sessions.forEach(s => {
+        if (s.sessionNumber === 1) {
           s.isLocked = true;
+          s.nextUnlockAt = new Date(Date.now() + SESSION_INTERVAL);
+          s.completedAt = null;
+          s.isClaimed = false;
           s.unlockedAt = null;
-          s.nextUnlockAt = new Date(claimTime.getTime() + (sessionNum - 1) * SESSION_INTERVAL);
+        } else {
+          s.isLocked = true;
+          s.nextUnlockAt = null;
+          s.completedAt = null;
+          s.isClaimed = false;
+          s.unlockedAt = null;
         }
-        s.completedAt = null;
-        s.isClaimed = false;
-        s.lastUpdated = claimTime;
       });
-      
-      user.sessionsResetAt = claimTime;
-      user.lastSessionCycleCompletedAt = claimTime;
-      
     } else {
-      // ========== NORMAL SESSION - UNLOCK NEXT SESSION ==========
-      nextSessionNumber = parseInt(sessionNumber) + 1;
+      nextSessionNumber = sessionNumber + 1;
       const nextSession = user.sessions.find(s => s.sessionNumber === nextSessionNumber);
-      
       if (nextSession) {
-        console.log(`🔓 Setting unlock for session ${nextSessionNumber} at:`, 
-          new Date(claimTime.getTime() + SESSION_INTERVAL).toISOString());
-        
+        const countdownDuration = SESSION_INTERVAL;
         nextSession.isLocked = true;
-        // ✅ NEXT SESSION UNLOCK = CLAIM TIME + 6 HOURS
-        nextSession.nextUnlockAt = new Date(claimTime.getTime() + SESSION_INTERVAL);
-        nextSession.unlockedAt = null;
+        nextSession.nextUnlockAt = new Date(Date.now() + countdownDuration);
         nextSession.completedAt = null;
         nextSession.isClaimed = false;
-        nextSession.lastUpdated = claimTime;
+        nextSession.unlockedAt = null;
       }
     }
 
     await user.save();
-    
-    console.log(`✅ Session ${sessionNumber} completed! New balance: ${user.balance}`);
-    console.log('📊 Updated sessions:', user.sessions.map(s => ({
-      num: s.sessionNumber,
-      locked: s.isLocked,
-      unlockAt: s.nextUnlockAt?.toISOString() || null,
-      completed: s.completedAt?.toISOString() || null
-    })));
 
-    res.status(200).json({
-      success: true,
+    const response = {
       message: 'Session completed successfully',
       session: session,
       nextSession: user.sessions.find(s => s.sessionNumber === nextSessionNumber),
-      sessionsReset: parseInt(sessionNumber) === 4,
-      balance: user.balance,
-      claimTime: claimTime
-    });
+      sessionsReset: parseInt(sessionNumber) === 4
+    };
 
+    console.log(`Session ${sessionNumber} completed. Response:`, JSON.stringify(response, null, 2));
+
+    res.status(200).json(response);
   } catch (error) {
-    console.error('❌ Complete session error:', error.message);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error completing session', 
-      error: error.message 
-    });
-  }
-};
-
-// ============================================
-// ✅ RESET USER SESSIONS - MANUAL RESET
-// ============================================
-exports.resetUserSessions = async (req, res) => {
-  try {
-    const { uid } = req.user;
-    const user = await User.findOne({ firebaseUid: uid });
-    
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    console.log(`🔄 Manually resetting sessions for user: ${uid}`);
-    
-    // ✅ RESET TIME = JAB USER NE RESET KIYA
-    const resetTime = new Date();
-    
-    const resetSessions = [
-      {
-        sessionNumber: 1,
-        unlockedAt: resetTime,                    // ✅ SESSION 1 - IMMEDIATELY UNLOCKED
-        completedAt: null,
-        isLocked: false,
-        nextUnlockAt: null,
-        isClaimed: false,
-        createdAt: user.sessions[0]?.createdAt || resetTime,
-        lastUpdated: resetTime
-      },
-      {
-        sessionNumber: 2,
-        unlockedAt: null,
-        completedAt: null,
-        isLocked: true,
-        nextUnlockAt: new Date(resetTime.getTime() + SESSION_INTERVAL), // +6 hours
-        isClaimed: false,
-        createdAt: user.sessions[1]?.createdAt || resetTime,
-        lastUpdated: resetTime
-      },
-      {
-        sessionNumber: 3,
-        unlockedAt: null,
-        completedAt: null,
-        isLocked: true,
-        nextUnlockAt: new Date(resetTime.getTime() + (2 * SESSION_INTERVAL)), // +12 hours
-        isClaimed: false,
-        createdAt: user.sessions[2]?.createdAt || resetTime,
-        lastUpdated: resetTime
-      },
-      {
-        sessionNumber: 4,
-        unlockedAt: null,
-        completedAt: null,
-        isLocked: true,
-        nextUnlockAt: new Date(resetTime.getTime() + (3 * SESSION_INTERVAL)), // +18 hours
-        isClaimed: false,
-        createdAt: user.sessions[3]?.createdAt || resetTime,
-        lastUpdated: resetTime
-      }
-    ];
-
-    user.sessions = resetSessions;
-    user.sessionsResetAt = resetTime;
-    user.lastSessionCycleCompletedAt = resetTime;
-    
-    await user.save();
-    
-    console.log(`✅ Sessions reset successful at ${resetTime.toISOString()}`);
-    console.log('📊 Reset sessions:', user.sessions.map(s => ({
-      num: s.sessionNumber,
-      locked: s.isLocked,
-      unlockAt: s.nextUnlockAt?.toISOString() || null
-    })));
-
-    res.status(200).json({
-      success: true,
-      message: 'Sessions reset successfully',
-      sessions: user.sessions,
-      resetTime: resetTime
-    });
-
-  } catch (error) {
-    console.error('❌ Reset sessions error:', error.message);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error resetting sessions', 
-      error: error.message 
-    });
+    console.error('Complete session error:', error.message);
+    res.status(500).json({ message: 'Error completing session', error: error.message });
   }
 };
 
@@ -603,16 +366,44 @@ exports.getUserCount = async (req, res) => {
   try {
     const count = await User.countDocuments();
     res.status(200).json({ 
-      success: true,
+      success: true,      // ✅ ADDED!
       count: count 
     });
   } catch (error) {
     console.error('Get user count error:', error.message);
     res.status(500).json({ 
-      success: false,
+      success: false,     // ✅ ADDED!
       message: 'Error getting user count', 
       error: error.message 
     });
+  }
+};
+
+exports.resetUserSessions = async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const user = await User.findOne({ firebaseUid: uid });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.sessions.forEach(s => {
+      s.completedAt = null;
+      s.isClaimed = false;
+      s.isLocked = s.sessionNumber === 1 ? false : true;
+      s.nextUnlockAt = null;
+      s.unlockedAt = s.sessionNumber === 1 ? new Date() : null;
+    });
+
+    await user.save();
+
+    res.status(200).json({
+      message: 'Sessions reset successfully',
+      sessions: user.sessions
+    });
+  } catch (error) {
+    console.error('Reset sessions error:', error.message);
+    res.status(500).json({ message: 'Error resetting sessions', error: error.message });
   }
 };
 
@@ -787,6 +578,7 @@ exports.uploadScreenshots = async (req, res) => {
   try {
     console.log('📸 Upload screenshots request received');
     console.log('📸 Files received:', req.files ? req.files.length : 0);
+    console.log('📸 User from middleware:', req.user);
 
     const { uid } = req.user;
     const user = await User.findOne({ firebaseUid: uid });
@@ -795,16 +587,24 @@ exports.uploadScreenshots = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    console.log('✅ User found:', user.email);
+
     if (!req.files || req.files.length === 0) {
       console.log('❌ No files received in request');
       return res.status(400).json({ message: 'No files uploaded' });
     }
 
-    const urls = req.files.map(file => file.path);
+    const urls = req.files.map(file => {
+      console.log('📸 Processing file:', file.originalname, 'URL:', file.path);
+      return file.path;
+    });
+
+    console.log('📸 All file URLs:', urls);
+
     user.screenshots = urls.slice(0, 6);
     await user.save();
 
-    console.log('✅ Screenshots saved successfully');
+    console.log('✅ Screenshots saved to user:', user.screenshots);
 
     res.status(200).json({
       message: 'Screenshots uploaded successfully',
@@ -812,6 +612,7 @@ exports.uploadScreenshots = async (req, res) => {
     });
   } catch (error) {
     console.error('Upload screenshots error:', error.message);
+    console.error('Full error:', error);
     res.status(500).json({ message: 'Error uploading screenshots', error: error.message });
   }
 };
@@ -820,6 +621,7 @@ exports.updateUserProfile = async (req, res) => {
   try {
     console.log("📝 Profile update request received");
     console.log("   User ID:", req.user.uid);
+    console.log("   Request body:", req.body);
 
     const { displayName, photoURL } = req.body;
     const userId = req.user.uid;
@@ -842,7 +644,6 @@ exports.updateUserProfile = async (req, res) => {
         inviteCode = generateInviteCode();
       }
 
-      const now = new Date();
       const newUser = new User({
         firebaseUid: userId,
         name: displayName.trim(),
@@ -851,8 +652,9 @@ exports.updateUserProfile = async (req, res) => {
         photoURL: photoURL || null,
         balance: 0,
         calculatorUsage: 0,
-        createdAt: now,
-        updatedAt: now
+        sessionsCompleted: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
       });
 
       await newUser.save();
@@ -864,7 +666,7 @@ exports.updateUserProfile = async (req, res) => {
         data: {
           displayName: displayName.trim(),
           photoURL: photoURL || null,
-          updatedAt: now.toISOString()
+          updatedAt: new Date().toISOString()
         }
       });
     }
@@ -890,6 +692,8 @@ exports.updateUserProfile = async (req, res) => {
 
   } catch (error) {
     console.error("❌ Error updating profile:", error);
+    console.error("Stack trace:", error.stack);
+    
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -898,6 +702,7 @@ exports.updateUserProfile = async (req, res) => {
   }
 };
 
+// ✅ SINGLE uploadProfilePicture function - NO DUPLICATES!
 exports.uploadProfilePicture = async (req, res) => {
   try {
     console.log('📸 Profile picture upload request received');
@@ -911,11 +716,18 @@ exports.uploadProfilePicture = async (req, res) => {
     }
 
     const userId = req.user.uid;
+    console.log('   User ID:', userId);
+    console.log('   Cloudinary file:', req.file);
+
+    // Cloudinary returns secure_url in path property
     const photoURL = req.file.path;
     
+    console.log('   Photo URL from Cloudinary:', photoURL);
+
     let user = await User.findOne({ firebaseUid: userId });
 
     if (!user) {
+      console.log('   Creating new user entry...');
       user = new User({
         firebaseUid: userId,
         email: req.user.email || '',
@@ -925,12 +737,13 @@ exports.uploadProfilePicture = async (req, res) => {
         updatedAt: new Date()
       });
     } else {
+      console.log('   Updating existing user:', user.email);
       user.photoURL = photoURL;
       user.updatedAt = new Date();
     }
 
     await user.save();
-    console.log('✅ Profile picture saved successfully');
+    console.log('   ✅ User saved successfully');
 
     res.json({
       success: true,
@@ -940,9 +753,12 @@ exports.uploadProfilePicture = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error in uploadProfilePicture:', error);
+    console.error('   Stack:', error.stack);
+    
     res.status(500).json({ 
       success: false, 
-      error: 'Failed to upload profile picture'
+      error: 'Failed to upload profile picture',
+      details: process.env.NODE_ENV === 'production' ? undefined : error.message
     });
   }
 };
@@ -980,3 +796,5 @@ exports.getUserDetails = async (req, res) => {
     });
   }
 };
+
+ 
