@@ -20,7 +20,7 @@ const sessionNotificationService = require('./services/sessionNotificationServic
 const autoNotificationService = require('./services/autoNotificationService');
 const admin = require('firebase-admin');
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 // ========== 🔥 FIREBASE ADMIN INITIALIZATION ==========
 console.log("🔥 Initializing Firebase Admin...");
@@ -105,7 +105,8 @@ app.post('/api/users/sync', async (req, res) => {
     
     console.log(`🔄 Syncing user: ${email} (UID: ${uid})`);
     
-    const User = require('./models/user.model');
+    // FIXED: Path to user model - one level up from src
+    const User = require('../models/user.model');
     
     // Find user by uid or email
     let user = await User.findOne({ $or: [{ uid: uid }, { email: email }] });
@@ -175,7 +176,8 @@ app.post('/api/users/sync', async (req, res) => {
 // Get all users
 app.get('/api/users/all', async (req, res) => {
   try {
-    const User = require('./models/user.model');
+    // FIXED: Path to user model - one level up from src
+    const User = require('../models/user.model');
     const users = await User.find({})
       .select('uid email name username balance isActive role createdAt lastLogin')
       .sort({ createdAt: -1 });
@@ -198,7 +200,8 @@ app.get('/api/users/leaderboard/top10', async (req, res) => {
   try {
     console.log('📊 Leaderboard endpoint hit');
     
-    const User = require('./models/user.model');
+    // FIXED: Path to user model - one level up from src
+    const User = require('../models/user.model');
     
     const topUsers = await User.find({ 
       isActive: true, 
@@ -260,7 +263,8 @@ app.get('/api/users/leaderboard/top10', async (req, res) => {
 app.get('/api/users/leaderboard/rank/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    const User = require('./models/user.model');
+    // FIXED: Path to user model - one level up from src
+    const User = require('../models/user.model');
     
     const user = await User.findById(userId);
     if (!user) {
