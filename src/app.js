@@ -105,7 +105,7 @@ app.post('/api/users/sync', async (req, res) => {
     
     console.log(`🔄 Syncing user: ${email} (UID: ${uid})`);
     
-    // ✅ CORRECT PATH: models/user.js (not user.model)
+    // ✅ CORRECT PATH for App Backend: models/user.js
     const User = require('../models/user');
     
     // Find user by firebaseUid or email
@@ -174,13 +174,13 @@ app.post('/api/users/sync', async (req, res) => {
 // Get all users
 app.get('/api/users/all', async (req, res) => {
   try {
-    // ✅ CORRECT PATH: models/user.js
+    // ✅ CORRECT PATH for App Backend: models/user.js
     const User = require('../models/user');
     const users = await User.find({})
       .select('firebaseUid email name balance isActive role createdAt')
       .sort({ createdAt: -1 });
     
-    console.log(`📊 Total users in MongoDB: ${users.length}`);
+    console.log(`📊 Total users in App Backend MongoDB: ${users.length}`);
     
     res.json({
       success: true,
@@ -198,7 +198,7 @@ app.get('/api/users/leaderboard/top10', async (req, res) => {
   try {
     console.log('📊 Leaderboard endpoint hit');
     
-    // ✅ CORRECT PATH: models/user.js
+    // ✅ CORRECT PATH for App Backend: models/user.js
     const User = require('../models/user');
     
     const topUsers = await User.find({ 
@@ -260,7 +260,7 @@ app.get('/api/users/leaderboard/top10', async (req, res) => {
 app.get('/api/users/leaderboard/rank/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    // ✅ CORRECT PATH: models/user.js
+    // ✅ CORRECT PATH for App Backend: models/user.js
     const User = require('../models/user');
     
     const user = await User.findById(userId);
