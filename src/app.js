@@ -105,7 +105,7 @@ app.post('/api/users/sync', async (req, res) => {
     
     console.log(`🔄 Syncing user: ${email} (UID: ${uid})`);
     
-    // FIXED: Path to user model - one level up from src
+    // ✅ FIXED: Correct path to user model (one level up from src)
     const User = require('../models/user.model');
     
     // Find user by uid or email
@@ -176,7 +176,7 @@ app.post('/api/users/sync', async (req, res) => {
 // Get all users
 app.get('/api/users/all', async (req, res) => {
   try {
-    // FIXED: Path to user model - one level up from src
+    // ✅ FIXED: Correct path to user model (one level up from src)
     const User = require('../models/user.model');
     const users = await User.find({})
       .select('uid email name username balance isActive role createdAt lastLogin')
@@ -200,7 +200,7 @@ app.get('/api/users/leaderboard/top10', async (req, res) => {
   try {
     console.log('📊 Leaderboard endpoint hit');
     
-    // FIXED: Path to user model - one level up from src
+    // ✅ FIXED: Correct path to user model (one level up from src)
     const User = require('../models/user.model');
     
     const topUsers = await User.find({ 
@@ -263,7 +263,7 @@ app.get('/api/users/leaderboard/top10', async (req, res) => {
 app.get('/api/users/leaderboard/rank/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    // FIXED: Path to user model - one level up from src
+    // ✅ FIXED: Correct path to user model (one level up from src)
     const User = require('../models/user.model');
     
     const user = await User.findById(userId);
