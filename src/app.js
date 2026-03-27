@@ -19,6 +19,7 @@ const timeRoutes = require('./routes/timeRoutes');
 const sessionNotificationService = require('./services/sessionNotificationService');
 const autoNotificationService = require('./services/autoNotificationService');
 const admin = require('firebase-admin');
+const { findUserModel } = require('./models/loader');
 
 const PORT = process.env.PORT || 8080;
 
@@ -102,8 +103,8 @@ app.post('/api/users/sync', async (req, res) => {
     
     console.log(`🔄 Syncing user: ${email} (UID: ${uid})`);
     
-    // Use the correct path for your user model
-    const User = require('../models/user');
+    // Use the loader to find User model
+    const User = findUserModel();
     
     let user = await User.findOne({ $or: [{ firebaseUid: uid }, { email: email }] });
     
@@ -153,7 +154,7 @@ app.post('/api/users/sync', async (req, res) => {
 // ============================================
 app.get('/api/users/all', async (req, res) => {
   try {
-    const User = require('../models/user');
+    const User = findUserModel();
     const users = await User.find({}).select('firebaseUid email name balance isActive');
     console.log(`📊 Total users: ${users.length}`);
     res.json({ success: true, count: users.length, users });
@@ -170,7 +171,7 @@ app.get('/api/users/leaderboard/top10', async (req, res) => {
   try {
     console.log('📊 Leaderboard endpoint hit');
     
-    const User = require('../models/user');
+    const User = findUserModel();
     
     const topUsers = await User.find({ 
       isActive: true, 
@@ -181,28 +182,23 @@ app.get('/api/users/leaderboard/top10', async (req, res) => {
       .limit(10)
       .lean();
     
-    console.log(`✅ Found ${topUsers.length} users with balances`);
+    console.log(`✅ Found ${topUsers.length} users`);
     
     const formattedUsers = topUsers.map((user, index) => ({
       rank: index + 1,
       id: user._id,
-      name: user.name || 'Anonymous User',
+      name: user.name || 'Anonymous',
       email: user.email,
       balance: user.balance || 0,
       profilePicture: user.photoURL || null
     }));
-    
-    const totalUsers = await User.countDocuments({ 
-      isActive: true, 
-      balance: { $gt: 0 } 
-    });
     
     res.json({
       success: true,
       data: {
         topUsers: formattedUsers,
         stats: {
-          totalUsersWithBalance: totalUsers,
+          totalUsersWithBalance: formattedUsers.length,
           highestBalance: formattedUsers[0]?.balance || 0,
           lastUpdated: new Date().toISOString()
         }
@@ -210,11 +206,7 @@ app.get('/api/users/leaderboard/top10', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Leaderboard error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error fetching leaderboard',
-      error: error.message 
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
