@@ -54,6 +54,9 @@ app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// ✅ CORRECT PATH FOR APP BACKEND (Flutter app)
+const User = require('./models/User');  // Note: capital U, in src/models/User.js
+
 // ============================================
 // TEST ENDPOINTS
 // ============================================
@@ -102,9 +105,7 @@ app.post('/api/users/sync', async (req, res) => {
     
     console.log(`🔄 Syncing user: ${email} (UID: ${uid})`);
     
-    // Use the correct path for your user model
-    const User = require('../models/user');
-    
+    // Find user by firebaseUid or email
     let user = await User.findOne({ $or: [{ firebaseUid: uid }, { email: email }] });
     
     if (!user) {
@@ -153,9 +154,8 @@ app.post('/api/users/sync', async (req, res) => {
 // ============================================
 app.get('/api/users/all', async (req, res) => {
   try {
-    const User = require('../models/user');
     const users = await User.find({}).select('firebaseUid email name balance isActive');
-    console.log(`📊 Total users: ${users.length}`);
+    console.log(`📊 Total users in App Backend: ${users.length}`);
     res.json({ success: true, count: users.length, users });
   } catch (error) {
     console.error('Error:', error);
@@ -169,8 +169,6 @@ app.get('/api/users/all', async (req, res) => {
 app.get('/api/users/leaderboard/top10', async (req, res) => {
   try {
     console.log('📊 Leaderboard endpoint hit');
-    
-    const User = require('../models/user');
     
     const topUsers = await User.find({ 
       isActive: true, 
