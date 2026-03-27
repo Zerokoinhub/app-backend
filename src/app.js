@@ -105,11 +105,11 @@ app.post('/api/users/sync', async (req, res) => {
     
     console.log(`🔄 Syncing user: ${email} (UID: ${uid})`);
     
-    // ✅ FIXED: Correct path to user model (one level up from src)
-    const User = require('../models/user.model');
+    // ✅ CORRECT PATH: models/user.js (not user.model)
+    const User = require('../models/user');
     
-    // Find user by uid or email
-    let user = await User.findOne({ $or: [{ uid: uid }, { email: email }] });
+    // Find user by firebaseUid or email
+    let user = await User.findOne({ $or: [{ firebaseUid: uid }, { email: email }] });
     
     if (!user) {
       // Create new user
@@ -118,10 +118,9 @@ app.post('/api/users/sync', async (req, res) => {
       const inviteCode = crypto.randomBytes(16).toString('hex');
       
       user = new User({
-        uid: uid,
+        firebaseUid: uid,
         email: email,
         name: name || email.split('@')[0],
-        username: username,
         photoURL: photoURL || '',
         balance: 0,
         isActive: true,
@@ -140,7 +139,7 @@ app.post('/api/users/sync', async (req, res) => {
       console.log(`✅ New user created: ${email}`);
     } else {
       // Update existing user
-      if (!user.uid && uid) user.uid = uid;
+      if (!user.firebaseUid && uid) user.firebaseUid = uid;
       if (name) user.name = name;
       if (photoURL) user.photoURL = photoURL;
       user.lastLogin = new Date();
@@ -153,10 +152,9 @@ app.post('/api/users/sync', async (req, res) => {
       message: 'User synced successfully',
       user: {
         id: user._id,
-        uid: user.uid,
+        firebaseUid: user.firebaseUid,
         email: user.email,
         name: user.name,
-        username: user.username,
         balance: user.balance,
         isActive: user.isActive,
         role: user.role
@@ -176,10 +174,10 @@ app.post('/api/users/sync', async (req, res) => {
 // Get all users
 app.get('/api/users/all', async (req, res) => {
   try {
-    // ✅ FIXED: Correct path to user model (one level up from src)
-    const User = require('../models/user.model');
+    // ✅ CORRECT PATH: models/user.js
+    const User = require('../models/user');
     const users = await User.find({})
-      .select('uid email name username balance isActive role createdAt lastLogin')
+      .select('firebaseUid email name balance isActive role createdAt')
       .sort({ createdAt: -1 });
     
     console.log(`📊 Total users in MongoDB: ${users.length}`);
@@ -200,14 +198,14 @@ app.get('/api/users/leaderboard/top10', async (req, res) => {
   try {
     console.log('📊 Leaderboard endpoint hit');
     
-    // ✅ FIXED: Correct path to user model (one level up from src)
-    const User = require('../models/user.model');
+    // ✅ CORRECT PATH: models/user.js
+    const User = require('../models/user');
     
     const topUsers = await User.find({ 
       isActive: true, 
       balance: { $gt: 0 } 
     })
-      .select('name username email balance photoURL country')
+      .select('name email balance photoURL country')
       .sort({ balance: -1 })
       .limit(10)
       .lean();
@@ -217,12 +215,11 @@ app.get('/api/users/leaderboard/top10', async (req, res) => {
     const formattedUsers = topUsers.map((user, index) => ({
       rank: index + 1,
       id: user._id,
-      name: user.name || user.username || 'Anonymous User',
+      name: user.name || 'Anonymous User',
       email: user.email,
       balance: user.balance || 0,
       profilePicture: user.photoURL || null,
-      country: user.country || 'Unknown',
-      username: user.username || ''
+      country: user.country || 'Unknown'
     }));
     
     const totalUsers = await User.countDocuments({ 
@@ -263,8 +260,8 @@ app.get('/api/users/leaderboard/top10', async (req, res) => {
 app.get('/api/users/leaderboard/rank/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    // ✅ FIXED: Correct path to user model (one level up from src)
-    const User = require('../models/user.model');
+    // ✅ CORRECT PATH: models/user.js
+    const User = require('../models/user');
     
     const user = await User.findById(userId);
     if (!user) {
