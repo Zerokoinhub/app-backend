@@ -16,6 +16,7 @@ const withdrawRoutes = require('./routes/withdrawRoutes');
 const courseRoutes = require('./routes/courseRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const timeRoutes = require('./routes/timeRoutes');
+const settingsRoutes = require('./routes/settings'); // ✅ ADD THIS LINE
 const sessionNotificationService = require('./services/sessionNotificationService');
 const autoNotificationService = require('./services/autoNotificationService');
 const admin = require('firebase-admin');
@@ -225,6 +226,7 @@ app.use("/api/withdraw", withdrawRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/time', timeRoutes);
+app.use('/api/settings', settingsRoutes); // ✅ ADD THIS LINE - Mount settings routes
 
 // ============================================
 // CONNECT TO DATABASE
@@ -285,6 +287,8 @@ const server = app.listen(PORT, () => {
   console.log(`   POST /api/users/sync             - Sync`);
   console.log(`   GET  /api/users/all              - All users`);
   console.log(`   GET  /api/users/leaderboard/top10 - Leaderboard`);
+  console.log(`   GET  /api/settings               - Get settings`); // ✅ ADD THIS
+  console.log(`   PUT  /api/settings               - Update settings`); // ✅ ADD THIS
   console.log('========================================');
 }).on('error', (err) => {
   console.error('Server error:', err);
