@@ -54,7 +54,7 @@ app.use(helmet());
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
+app.use('/api/settings', settingsRoutes);
 // ✅ CORRECT PATH FOR APP BACKEND (Flutter app)
 const User = require('./models/User');  // Note: capital U, in src/models/User.js
 
