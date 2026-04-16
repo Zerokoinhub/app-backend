@@ -1,5 +1,86 @@
 const Course = require('../models/Course');
+// Get courses by language (for Flutter app)
+exports.getCoursesByLanguage = async (req, res) => {
+  try {
+    const { language } = req.params;
+    const { page = 1, limit = 10 } = req.query;
 
+    console.log(`📚 Fetching courses in language: ${language}`);
+
+    // Find courses that have this language available
+    const query = { 
+      [`languages.${language}`]: { $exists: true },
+      isActive: true 
+    };
+
+    const courses = await Course.find(query)
+      .populate('uploadedBy', 'username email')
+      .skip((parseInt(page) - 1) * parseInt(limit))
+      .limit(parseInt(limit));
+
+    const total = await Course.countDocuments(query);
+
+    console.log(`✅ Found ${courses.length} courses in ${language}`);
+
+    // Transform courses to include only the requested language content
+    const localizedCourses = courses.map(course => {
+      const langContent = course.languages[language];
+      
+      if (!langContent) {
+        console.log(`⚠️ No ${language} content for course ${course._id}`);
+        return null;
+      }
+      
+      let courseName = langContent.courseName || 'Untitled';
+      
+      // ✅ Filter out Arabic course names when language is English
+      if (language === 'en') {
+        const hasArabic = /[\u0600-\u06FF]/.test(courseName);
+        if (hasArabic) {
+          console.log(`⚠️ Skipping Arabic course name: ${courseName}`);
+          return null;
+        }
+      }
+      
+      // ✅ Filter out English course names when language is Arabic
+      if (language === 'ar') {
+        const hasEnglish = /^[a-zA-Z\s\']+$/.test(courseName);
+        if (hasEnglish) {
+          console.log(`⚠️ Skipping English course name: ${courseName}`);
+          return null;
+        }
+      }
+      
+      return {
+        id: course._id,
+        courseName: courseName,
+        pages: langContent.pages || [],
+        uploadedBy: course.uploadedBy,
+        availableLanguages: course.availableLanguages || [],
+        createdAt: course.createdAt
+      };
+    }).filter(course => course !== null);
+
+    console.log(`✅ Returning ${localizedCourses.length} courses for ${language}`);
+    
+    res.json({ 
+      success: true, 
+      courses: localizedCourses,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        totalCourses: total
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching courses by language:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching courses by language",
+      error: error.message,
+    });
+  }
+};
 // Add a new course with full content
 exports.addCourse = async (req, res) => {
   try {
