@@ -1,13 +1,13 @@
 const Course = require('../models/Course');
-// Get courses by language (for Flutter app)
-// Get courses by language (for Flutter app)
+
+// Get courses by language (for Flutter app) - FULLY FIXED
 exports.getCoursesByLanguage = async (req, res) => {
   try {
     const { language } = req.params;
 
     console.log(`📚 Fetching courses in language: ${language}`);
 
-    // Get ALL active courses first
+    // Get ALL active courses
     const courses = await Course.find({ isActive: true }).lean();
 
     console.log(`📚 Total active courses: ${courses.length}`);
@@ -19,38 +19,26 @@ exports.getCoursesByLanguage = async (req, res) => {
       let pages = [];
       let found = false;
 
-      // Check for languages.en structure
+      // ✅ Check for requested language in languages object
       if (course.languages && course.languages[language]) {
         courseName = course.languages[language].courseName;
         pages = course.languages[language].pages || [];
         found = true;
       }
-      // Check for direct courseName and pages (old structure)
-      else if (course.courseName && course.pages) {
-        // For English, use direct fields
-        if (language === 'en') {
+      // ✅ For English, also check direct fields
+      else if (language === 'en') {
+        if (course.courseName && course.pages) {
           courseName = course.courseName;
+          pages = course.pages || [];
+          found = true;
+        } else if (course.primaryName && course.pages) {
+          courseName = course.primaryName;
           pages = course.pages || [];
           found = true;
         }
       }
-      // Check for primaryName
-      else if (course.primaryName && language === 'en') {
-        courseName = course.primaryName;
-        pages = course.pages || [];
-        found = true;
-      }
 
       if (found && courseName) {
-        // Filter out Arabic names when language is English
-        if (language === 'en') {
-          const hasArabic = /[\u0600-\u06FF]/.test(courseName);
-          if (hasArabic) {
-            console.log(`⚠️ Skipping Arabic course: ${courseName}`);
-            continue;
-          }
-        }
-
         localizedCourses.push({
           id: course._id,
           courseName: courseName,
@@ -58,7 +46,7 @@ exports.getCoursesByLanguage = async (req, res) => {
           availableLanguages: course.availableLanguages || ['en'],
         });
         
-        console.log(`✅ Added course: ${courseName} with ${pages.length} pages`);
+        console.log(`✅ Added course: ${courseName} with ${pages.length} pages for language: ${language}`);
       }
     }
 
@@ -77,7 +65,9 @@ exports.getCoursesByLanguage = async (req, res) => {
       error: error.message,
     });
   }
-};// Add a new course with full content
+};
+
+// Add a new course with full content
 exports.addCourse = async (req, res) => {
   try {
     const { courseName, languages, uploadedBy } = req.body;
@@ -90,12 +80,15 @@ exports.addCourse = async (req, res) => {
     }
 
     // Check if course already exists
-    const existingCourse = await Course.findOne({ 
-      $or: [
-        { courseName: courseName },
-        { 'languages.en.courseName': courseName }
-      ]
-    });
+    let existingCourse = null;
+    
+    if (languages && languages.en && languages.en.courseName) {
+      existingCourse = await Course.findOne({ 
+        'languages.en.courseName': languages.en.courseName 
+      });
+    } else if (courseName) {
+      existingCourse = await Course.findOne({ courseName: courseName });
+    }
     
     if (existingCourse) {
       return res.status(409).json({ 
@@ -165,44 +158,31 @@ exports.addCourse = async (req, res) => {
   }
 };
 
-// Get all course names (for dropdown)
+// Get all courses with full details (for admin panel) - FIXED
 exports.getAllCourses = async (req, res) => {
   try {
-    console.log('📚 Fetching all course names');
+    console.log('📚 Fetching all courses with full data');
     
     const courses = await Course.find({ isActive: true })
-      .select('courseName languages primaryName')
+      .sort({ createdAt: -1 })
       .lean();
     
-    const courseNames = [];
-    
-    courses.forEach(course => {
-      // Get from direct courseName field
-      if (course.courseName && course.courseName.trim()) {
-        if (!courseNames.includes(course.courseName)) {
-          courseNames.push(course.courseName);
-        }
-      }
-      
-      // Get from languages object
-      if (course.languages) {
-        Object.values(course.languages).forEach(langContent => {
-          if (langContent && langContent.courseName && !courseNames.includes(langContent.courseName)) {
-            courseNames.push(langContent.courseName);
-          }
-        });
-      }
-      
-      // Get from primaryName
-      if (course.primaryName && course.primaryName.trim() && !courseNames.includes(course.primaryName)) {
-        courseNames.push(course.primaryName);
-      }
-    });
+    const transformedCourses = courses.map(course => ({
+      _id: course._id,
+      courseName: course.courseName || course.primaryName || 'Untitled',
+      primaryName: course.primaryName,
+      languages: course.languages || {},
+      pages: course.pages,
+      availableLanguages: course.availableLanguages || ['en'],
+      isActive: course.isActive,
+      createdAt: course.createdAt,
+      updatedAt: course.updatedAt
+    }));
     
     res.status(200).json({ 
-      success: true,
-      courseNames: courseNames,
-      totalCourses: courseNames.length
+      success: true, 
+      courses: transformedCourses,
+      totalCourses: transformedCourses.length
     });
   } catch (error) {
     console.error('Get courses error:', error.message);
@@ -229,7 +209,7 @@ exports.getCourseDetailsByName = async (req, res) => {
         { courseName: { $regex: new RegExp(`^${courseName}$`, 'i') } },
         { primaryName: { $regex: new RegExp(`^${courseName}$`, 'i') } },
         { 'languages.en.courseName': { $regex: new RegExp(`^${courseName}$`, 'i') } },
-        { 'languages.ar.courseName': { $regex: new RegExp(`^${courseName}$`, 'i') } }
+        { 'languages.hi.courseName': { $regex: new RegExp(`^${courseName}$`, 'i') } }
       ]
     }).lean();
 
@@ -277,7 +257,7 @@ exports.getCourseDetailsByName = async (req, res) => {
   }
 };
 
-// Get all courses with full details (for admin panel)
+// Get all courses with full details (for admin panel) - Alias
 exports.getAllCoursesFull = async (req, res) => {
   try {
     const courses = await Course.find({ isActive: true })
@@ -337,13 +317,30 @@ exports.deleteCourse = async (req, res) => {
   }
 };
 
-// Update a course
+// Update a course - FIXED to handle languages properly
 exports.updateCourse = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
     
     updateData.updatedAt = new Date();
+    
+    // If languages are being updated, update availableLanguages too
+    if (updateData.languages) {
+      updateData.availableLanguages = Object.keys(updateData.languages);
+      
+      // Set primary name from English or first language
+      if (updateData.languages.en && updateData.languages.en.courseName) {
+        updateData.courseName = updateData.languages.en.courseName;
+        updateData.primaryName = updateData.languages.en.courseName;
+      } else {
+        const firstLang = Object.keys(updateData.languages)[0];
+        if (firstLang && updateData.languages[firstLang].courseName) {
+          updateData.courseName = updateData.languages[firstLang].courseName;
+          updateData.primaryName = updateData.languages[firstLang].courseName;
+        }
+      }
+    }
     
     const course = await Course.findByIdAndUpdate(
       id,
@@ -361,7 +358,13 @@ exports.updateCourse = async (req, res) => {
     res.status(200).json({ 
       success: true, 
       message: 'Course updated successfully',
-      course
+      course: {
+        _id: course._id,
+        courseName: course.courseName,
+        languages: course.languages,
+        availableLanguages: course.availableLanguages,
+        isActive: course.isActive
+      }
     });
   } catch (error) {
     console.error('Update course error:', error.message);
