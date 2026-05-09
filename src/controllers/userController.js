@@ -9,7 +9,7 @@ const notificationService = new NotificationService();
 const generateInviteCode = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let code = '';
-  for (let i = 0; i < 34; i++) {
+  for (let i = 0; i < 34; i++) {https://github.com/Zerokoinhub/app-backend/edit/main/src/controllers/userController.js
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return code;
@@ -573,11 +573,23 @@ exports.updateNotificationSettings = async (req, res) => {
     res.status(500).json({ message: 'Error updating notification settings', error: error.message });
   }
 };
-
+// ✅ FIXED uploadScreenshots function
 exports.uploadScreenshots = async (req, res) => {
   try {
     console.log('📸 Upload screenshots request received');
     console.log('📸 Files received:', req.files ? req.files.length : 0);
+    
+    // Debug: Log file details
+    if (req.files && req.files.length > 0) {
+      req.files.forEach((file, i) => {
+        console.log(`📸 File ${i + 1}:`, {
+          originalname: file.originalname,
+          path: file.path,
+          filename: file.filename,
+          size: file.size
+        });
+      });
+    }
     
     const { uid } = req.user;
     if (!uid) {
@@ -598,13 +610,13 @@ exports.uploadScreenshots = async (req, res) => {
       return res.status(400).json({ message: 'No files uploaded' });
     }
     
-    // ✅ FIX: Get URLs correctly from Cloudinary
+    // ✅ FIX: Get Cloudinary URLs from file.path
     const urls = req.files.map(file => {
-      // Cloudinary returns URL in different properties
-      const url = file.path || file.secure_url || file.url;
-      console.log('📸 File URL:', url);
+      // CloudinaryStorage returns URL in file.path
+      const url = file.path;
+      console.log('📸 Extracted URL:', url);
       return url;
-    }).filter(url => url); // Remove any undefined/null
+    }).filter(url => url && url !== 'null' && url !== 'undefined');
     
     if (urls.length === 0) {
       console.log('❌ No valid URLs extracted from files');
@@ -613,13 +625,13 @@ exports.uploadScreenshots = async (req, res) => {
     
     console.log('📸 All file URLs:', urls);
     
-    // Add to existing screenshots (don't replace)
+    // Add to existing screenshots
     if (!user.screenshots) user.screenshots = [];
     user.screenshots.push(...urls);
     user.updatedAt = new Date();
     await user.save();
     
-    console.log('✅ Screenshots saved to user, total:', user.screenshots.length);
+    console.log('✅ Screenshots saved, total:', user.screenshots.length);
     
     res.status(200).json({
       success: true,
