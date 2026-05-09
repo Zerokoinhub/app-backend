@@ -24,6 +24,7 @@ const upload = multer({
 // ============================================
 // ✅ PROFILE PICTURE UPLOAD - SINGLE ROUTE
 // ============================================
+router.post('/upload-screenshots', uploadScreenshots.array('screenshots', 10), userController.uploadScreenshots);
 router.post('/upload-profile-picture', 
   verifyFirebaseToken,
   (req, res, next) => {
