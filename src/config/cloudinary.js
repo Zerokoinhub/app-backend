@@ -1,4 +1,6 @@
 const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const multer = require('multer');
 
 // ✅ Add detailed logging
 console.log('🔧 Initializing Cloudinary...');
@@ -13,4 +15,35 @@ cloudinary.config({
   secure: true
 });
 
-module.exports = cloudinary;
+// ✅ CREATE STORAGE FOR SCREENSHOTS
+const screenshotStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'user_screenshots',
+    format: async (req, file) => {
+      const ext = file.originalname.split('.').pop().toLowerCase();
+      return ext === 'png' ? 'png' : 'jpg';
+    },
+    public_id: (req, file) => {
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(2, 10);
+      return `screenshot_${timestamp}_${random}`;
+    }
+  }
+});
+
+// ✅ CREATE MULTER UPLOAD MIDDLEWARE
+const uploadScreenshots = multer({ 
+  storage: screenshotStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JPEG, JPG, PNG images are allowed'), false);
+    }
+  }
+});
+
+module.exports = { cloudinary, uploadScreenshots };
