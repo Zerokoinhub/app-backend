@@ -578,45 +578,66 @@ exports.uploadScreenshots = async (req, res) => {
   try {
     console.log('📸 Upload screenshots request received');
     console.log('📸 Files received:', req.files ? req.files.length : 0);
-    console.log('📸 User from middleware:', req.user);
-
+    
     const { uid } = req.user;
+    if (!uid) {
+      console.log('❌ No uid in request');
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    
     const user = await User.findOne({ firebaseUid: uid });
     if (!user) {
       console.log('❌ User not found for uid:', uid);
       return res.status(404).json({ message: 'User not found' });
     }
-
+    
     console.log('✅ User found:', user.email);
-
+    
     if (!req.files || req.files.length === 0) {
-      console.log('❌ No files received in request');
+      console.log('❌ No files received');
       return res.status(400).json({ message: 'No files uploaded' });
     }
-
+    
+    // ✅ FIX: Get URLs correctly from Cloudinary
     const urls = req.files.map(file => {
-      console.log('📸 Processing file:', file.originalname, 'URL:', file.path);
-      return file.path;
-    });
-
+      // Cloudinary returns URL in different properties
+      const url = file.path || file.secure_url || file.url;
+      console.log('📸 File URL:', url);
+      return url;
+    }).filter(url => url); // Remove any undefined/null
+    
+    if (urls.length === 0) {
+      console.log('❌ No valid URLs extracted from files');
+      return res.status(500).json({ message: 'File upload failed - no URLs generated' });
+    }
+    
     console.log('📸 All file URLs:', urls);
-
-    user.screenshots = urls.slice(0, 6);
+    
+    // Add to existing screenshots (don't replace)
+    if (!user.screenshots) user.screenshots = [];
+    user.screenshots.push(...urls);
+    user.updatedAt = new Date();
     await user.save();
-
-    console.log('✅ Screenshots saved to user:', user.screenshots);
-
+    
+    console.log('✅ Screenshots saved to user, total:', user.screenshots.length);
+    
     res.status(200).json({
+      success: true,
       message: 'Screenshots uploaded successfully',
+      urls: urls,
       screenshots: user.screenshots
     });
+    
   } catch (error) {
     console.error('Upload screenshots error:', error.message);
     console.error('Full error:', error);
-    res.status(500).json({ message: 'Error uploading screenshots', error: error.message });
+    res.status(500).json({ 
+      success: false,
+      message: 'Error uploading screenshots', 
+      error: error.message 
+    });
   }
 };
-
 exports.updateUserProfile = async (req, res) => {
   try {
     console.log("📝 Profile update request received");
