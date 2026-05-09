@@ -16,7 +16,7 @@ const withdrawRoutes = require('./routes/withdrawRoutes');
 const courseRoutes = require('./routes/courseRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const timeRoutes = require('./routes/timeRoutes');
-const settingsRoutes = require('./routes/settings'); // ✅ ADD THIS LINE
+const settingsRoutes = require('./routes/settings');
 const sessionNotificationService = require('./services/sessionNotificationService');
 const autoNotificationService = require('./services/autoNotificationService');
 const admin = require('firebase-admin');
@@ -49,14 +49,35 @@ try {
 // ======================================================
 
 const app = express();
-app.use(cors());
-app.use(helmet());
+
+// ============================================
+// ✅ COMPLETE CORS CONFIGURATION (FIXED)
+// ============================================
+app.use(cors({
+  origin: true,  // Allow all origins (for production, specify your domains)
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Content-Length', 'X-Requested-With'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+}));
+
+// Handle preflight requests explicitly
+app.options('*', cors());
+
+// Security and logging
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use('/api/settings', settingsRoutes);
-// ✅ CORRECT PATH FOR APP BACKEND (Flutter app)
-const User = require('./models/User');  // Note: capital U, in src/models/User.js
+
+// ============================================
+// MODELS
+// ============================================
+const User = require('./models/User');
 
 // ============================================
 // TEST ENDPOINTS
@@ -88,6 +109,19 @@ app.get('/api/test', (req, res) => {
 });
 
 // ============================================
+// CORS TEST ENDPOINT
+// ============================================
+app.get('/api/cors-test', (req, res) => {
+  console.log('✅ CORS test from:', req.headers.origin);
+  res.json({ 
+    success: true, 
+    message: 'CORS is working!',
+    origin: req.headers.origin,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// ============================================
 // SYNC ENDPOINT
 // ============================================
 app.post('/api/users/sync', async (req, res) => {
@@ -106,11 +140,9 @@ app.post('/api/users/sync', async (req, res) => {
     
     console.log(`🔄 Syncing user: ${email} (UID: ${uid})`);
     
-    // Find user by firebaseUid or email
     let user = await User.findOne({ $or: [{ firebaseUid: uid }, { email: email }] });
     
     if (!user) {
-      const username = name ? name.toLowerCase().replace(/\s/g, '') : email.split('@')[0];
       const crypto = require('crypto');
       const inviteCode = crypto.randomBytes(16).toString('hex');
       
@@ -226,7 +258,7 @@ app.use("/api/withdraw", withdrawRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/time', timeRoutes);
-app.use('/api/settings', settingsRoutes); // ✅ ADD THIS LINE - Mount settings routes
+app.use('/api/settings', settingsRoutes);
 
 // ============================================
 // CONNECT TO DATABASE
@@ -278,18 +310,24 @@ app.use((err, req, res, next) => {
 // START SERVER
 // ============================================
 const server = app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`\n🚀 Server is running on port ${PORT}`);
   console.log('========================================');
   console.log('📋 AVAILABLE ENDPOINTS:');
   console.log(`   GET  /                           - Root`);
   console.log(`   GET  /health                     - Health`);
+  console.log(`   GET  /ping                       - Ping`);
   console.log(`   GET  /api/users/test-deploy      - Test`);
+  console.log(`   GET  /api/cors-test              - CORS Test`);
   console.log(`   POST /api/users/sync             - Sync`);
   console.log(`   GET  /api/users/all              - All users`);
   console.log(`   GET  /api/users/leaderboard/top10 - Leaderboard`);
-  console.log(`   GET  /api/settings               - Get settings`); // ✅ ADD THIS
-  console.log(`   PUT  /api/settings               - Update settings`); // ✅ ADD THIS
+  console.log(`   POST /api/users/upload-screenshots - Upload Screenshots`);
+  console.log(`   GET  /api/settings               - Get settings`);
+  console.log(`   PUT  /api/settings               - Update settings`);
   console.log('========================================');
+  console.log('✅ CORS enabled for all origins');
+  console.log('🌐 Allowed Methods: GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  console.log('========================================\n');
 }).on('error', (err) => {
   console.error('Server error:', err);
   process.exit(1);
