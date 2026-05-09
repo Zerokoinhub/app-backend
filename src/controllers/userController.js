@@ -574,75 +574,48 @@ exports.updateNotificationSettings = async (req, res) => {
   }
 };
 // ✅ FIXED uploadScreenshots function
+const { uploadToFirebase } = require('../config/cloudinary');
+
 exports.uploadScreenshots = async (req, res) => {
   try {
     console.log('📸 Upload screenshots request received');
-    console.log('📸 Files received:', req.files ? req.files.length : 0);
-    
-    // Debug: Log file details
-    if (req.files && req.files.length > 0) {
-      req.files.forEach((file, i) => {
-        console.log(`📸 File ${i + 1}:`, {
-          originalname: file.originalname,
-          path: file.path,
-          filename: file.filename,
-          size: file.size
-        });
-      });
-    }
     
     const { uid } = req.user;
     if (!uid) {
-      console.log('❌ No uid in request');
       return res.status(401).json({ message: 'Unauthorized' });
     }
     
     const user = await User.findOne({ firebaseUid: uid });
     if (!user) {
-      console.log('❌ User not found for uid:', uid);
       return res.status(404).json({ message: 'User not found' });
     }
     
-    console.log('✅ User found:', user.email);
-    
     if (!req.files || req.files.length === 0) {
-      console.log('❌ No files received');
       return res.status(400).json({ message: 'No files uploaded' });
     }
     
-    // ✅ FIX: Get Cloudinary URLs from file.path
-    const urls = req.files.map(file => {
-      // CloudinaryStorage returns URL in file.path
-      const url = file.path;
-      console.log('📸 Extracted URL:', url);
-      return url;
-    }).filter(url => url && url !== 'null' && url !== 'undefined');
-    
-    if (urls.length === 0) {
-      console.log('❌ No valid URLs extracted from files');
-      return res.status(500).json({ message: 'File upload failed - no URLs generated' });
+    // ✅ Firebase Storage se upload
+    const urls = [];
+    for (const file of req.files) {
+      const url = await uploadToFirebase(file, uid);
+      urls.push(url);
+      console.log('📸 Uploaded to Firebase:', url);
     }
     
-    console.log('📸 All file URLs:', urls);
-    
-    // Add to existing screenshots
     if (!user.screenshots) user.screenshots = [];
     user.screenshots.push(...urls);
     user.updatedAt = new Date();
     await user.save();
     
-    console.log('✅ Screenshots saved, total:', user.screenshots.length);
-    
     res.status(200).json({
       success: true,
-      message: 'Screenshots uploaded successfully',
+      message: `${urls.length} screenshot(s) uploaded successfully`,
       urls: urls,
       screenshots: user.screenshots
     });
     
   } catch (error) {
-    console.error('Upload screenshots error:', error.message);
-    console.error('Full error:', error);
+    console.error('Upload error:', error);
     res.status(500).json({ 
       success: false,
       message: 'Error uploading screenshots', 
