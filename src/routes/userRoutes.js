@@ -142,6 +142,8 @@ router.post('/sync', verifyFirebaseToken, userController.syncFirebaseUser);
 router.get('/profile', verifyFirebaseToken, userController.getUserProfile);
 router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
 router.put('/wallet-address', verifyFirebaseToken, userController.updateWalletAddress);
+// Add this new route
+router.get('/leaderboard/complete', userController.getCompleteLeaderboard);
 router.get('/count', userController.getUserCount);
 router.put('/calculator-usage', verifyFirebaseToken, userController.incrementCalculatorUsage);
 router.put('/update-balance', verifyFirebaseToken, userController.updateUserBalance);
