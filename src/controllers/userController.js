@@ -967,4 +967,7 @@ exports.getUserDetails = async (req, res) => {
 };
 // Export missing functions
 exports.getCompleteLeaderboard = getCompleteLeaderboard;
+// Add this at the VERY END of userController.js
+exports.checkBonusStatus = checkBonusStatus;
+exports.claimDailyBonus = claimDailyBonus;
  
