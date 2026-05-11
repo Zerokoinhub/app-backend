@@ -14,7 +14,50 @@ const generateInviteCode = () => {
   }
   return code;
 };
+// ============ NEW: Complete Leaderboard Endpoint ============
+const getCompleteLeaderboard = async (req, res) => {
+  try {
+    console.log('📊 Fetching complete leaderboard...');
 
+    // Get all active users
+    const allUsers = await User.find({})
+      .select('name email balance photoURL')
+      .sort({ balance: -1 })
+      .lean();
+
+    console.log(`✅ Total users: ${allUsers.length}`);
+
+    // Format users with proper data
+    const formattedUsers = allUsers.map((user, index) => ({
+      rank: index + 1,
+      id: user._id,
+      name: user.name || 'Anonymous',
+      email: user.email,
+      balance: Number(user.balance) || 0,
+      photoURL: user.photoURL || null,
+    }));
+
+    // Get top 10
+    const top10Users = formattedUsers.slice(0, 10);
+
+    res.json({
+      success: true,
+      data: {
+        topUsers: top10Users,
+        allUsers: formattedUsers, // Optional: agar sab chahiye toh
+        stats: {
+          totalUsers: formattedUsers.length,
+          highestBalance: formattedUsers[0]?.balance || 0,
+          lastUpdated: new Date().toISOString()
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
 exports.registerUser = async (req, res) => {
   try {
     let inviteCode = generateInviteCode();
