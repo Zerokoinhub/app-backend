@@ -133,7 +133,7 @@ router.post('/upload-screenshots',
 router.post('/register', userController.registerUser);
 router.get('/invite/:inviteCode', userController.getInviteDetails);
 router.post('/referral', userController.processReferral);
-router.get('/leaderboard/top10', userController.getTopBalanceUsers);
+
 router.get('/sessions', verifyFirebaseToken, getUserSessions);
 router.post('/unlock', verifyFirebaseToken, unlockNextSession);
 router.post('/complete-session', verifyFirebaseToken, completeSession);
