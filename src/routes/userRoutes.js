@@ -35,7 +35,7 @@ const upload = multer({
 router.post('/test-bonus-notification', verifyFirebaseToken, async (req, res) => {
   try {
     const User = require('../models/User');
-    const NotificationService = require('../services/NotificationService');
+    const NotificationService = require('../services/notificationService');
     const notificationService = new NotificationService();
     
     const user = await User.findOne({ firebaseUid: req.user.uid });
