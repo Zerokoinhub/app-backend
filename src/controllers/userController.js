@@ -14,6 +14,73 @@ const generateInviteCode = () => {
   }
   return code;
 };
+// userController.js - Backend
+const claimDailyBonus = async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Get top 3 users
+    const topUsers = await User.find({})
+      .sort({ balance: -1 })
+      .limit(3)
+      .lean();
+    
+    // Check if user is in top 3
+    const userRank = topUsers.findIndex(u => u.firebaseUid === uid) + 1;
+    
+    let bonusAmount = 0;
+    if (userRank === 1) bonusAmount = 20;
+    else if (userRank === 2) bonusAmount = 10;
+    else if (userRank === 3) bonusAmount = 5;
+    else {
+      return res.json({ 
+        success: false, 
+        message: 'You are not in top 3' 
+      });
+    }
+    
+    // Check if already claimed today
+    const user = await User.findOne({ firebaseUid: uid });
+    if (user.lastBonusClaimDate === today) {
+      return res.json({ 
+        success: false, 
+        message: 'Already claimed today' 
+      });
+    }
+    
+    // ✅ ADD BONUS TO BALANCE
+    const newBalance = (user.balance || 0) + bonusAmount;
+    
+    // Update user
+    await User.findOneAndUpdate(
+      { firebaseUid: uid },
+      { 
+        $set: { 
+          balance: newBalance,
+          lastBonusClaimDate: today,
+          lastBonusRank: userRank,
+          lastBonusAmount: bonusAmount
+        }
+      }
+    );
+    
+    // ✅ RETURN UPDATED BALANCE
+    res.json({
+      success: true,
+      message: `You got ${bonusAmount} coins!`,
+      data: {
+        bonusAmount: bonusAmount,
+        newBalance: newBalance,
+        oldBalance: newBalance - bonusAmount,
+        rank: userRank
+      }
+    });
+    
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
 // ============ NEW: Complete Leaderboard Endpoint ============
 const getCompleteLeaderboard = async (req, res) => {
   try {
