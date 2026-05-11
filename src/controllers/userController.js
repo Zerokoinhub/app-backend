@@ -15,6 +15,59 @@ const generateInviteCode = () => {
   return code;
 };
 // userController.js - Backend
+// Check bonus status for current user
+const checkBonusStatus = async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Get current user
+    const user = await User.findOne({ firebaseUid: uid });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    
+    // Get top 3 users
+    const topUsers = await User.find({})
+      .select('firebaseUid balance')
+      .sort({ balance: -1 })
+      .limit(3)
+      .lean();
+    
+    // Find user's rank
+    const userRank = topUsers.findIndex(u => u.firebaseUid === uid) + 1;
+    const isInTop3 = userRank <= 3 && userRank > 0;
+    
+    // Check if already claimed today
+    const alreadyClaimed = user.lastBonusClaimDate === today;
+    
+    // Calculate bonus amount
+    let bonusAmount = 0;
+    if (userRank === 1) bonusAmount = 20;
+    else if (userRank === 2) bonusAmount = 10;
+    else if (userRank === 3) bonusAmount = 5;
+    
+    // Can claim only if in top 3 and not claimed today
+    const canClaim = isInTop3 && !alreadyClaimed;
+    
+    console.log(`📊 Bonus Status - User: ${user.email}, Rank: ${userRank}, Can Claim: ${canClaim}`);
+    
+    res.json({
+      success: true,
+      data: {
+        rank: userRank,
+        isInTop3: isInTop3,
+        alreadyClaimed: alreadyClaimed,
+        canClaim: canClaim,
+        bonusAmount: bonusAmount
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error checking bonus status:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
 const claimDailyBonus = async (req, res) => {
   try {
     const { uid } = req.user;
