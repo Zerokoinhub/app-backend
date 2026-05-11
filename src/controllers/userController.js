@@ -845,5 +845,6 @@ exports.getUserDetails = async (req, res) => {
     });
   }
 };
-
+// Export missing functions
+exports.getCompleteLeaderboard = getCompleteLeaderboard;
  
