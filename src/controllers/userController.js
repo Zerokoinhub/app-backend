@@ -28,7 +28,57 @@ exports.registerUser = async (req, res) => {
     res.status(500).json({ message: 'Error registering user' });
   }
 };
+// ============ LEADERBOARD FUNCTIONS ============
 
+exports.getTopBalanceUsers = async (req, res) => {
+  try {
+    console.log('📊 Fetching top users by balance...');
+
+    const topUsers = await User.find({ 
+      isActive: true,
+      balance: { $gt: 0 }
+    })
+    .select('name username email balance photoURL profilePicture country')
+    .sort({ balance: -1 })
+    .limit(10)
+    .lean();
+
+    const formattedUsers = topUsers.map((user, index) => ({
+      rank: index + 1,
+      id: user._id,
+      name: user.name || user.username || 'Anonymous User',
+      email: user.email,
+      balance: user.balance || 0,
+      photoURL: user.photoURL || null,
+      profilePicture: user.photoURL || user.profilePicture || null,
+      country: user.country || 'Unknown',
+    }));
+
+    const totalActiveUsers = await User.countDocuments({ 
+      isActive: true,
+      balance: { $gt: 0 }
+    });
+
+    console.log(`✅ Top ${formattedUsers.length} users fetched`);
+    console.log(`📸 Users with photos: ${formattedUsers.filter(u => u.photoURL).length}`);
+
+    res.json({
+      success: true,
+      data: {
+        topUsers: formattedUsers,
+        stats: {
+          totalUsersWithBalance: totalActiveUsers,
+          highestBalance: formattedUsers[0]?.balance || 0,
+          lastUpdated: new Date().toISOString()
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error in getTopBalanceUsers:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
 exports.getInviteDetails = async (req, res) => {
   try {
     const { inviteCode } = req.params;
