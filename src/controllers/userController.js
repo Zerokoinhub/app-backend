@@ -29,57 +29,6 @@ exports.registerUser = async (req, res) => {
   }
 };
 // ============ LEADERBOARD FUNCTIONS ============
-exports.getTopBalanceUsers = async (req, res) => {
-  try {
-    console.log('📊 Leaderboard endpoint hit');
-
-    const topUsers = await User.find({ 
-      isActive: true, 
-      balance: { $gt: 0 } 
-    })
-      .select('name email balance photoURL profilePicture')
-      .sort({ balance: -1 })
-      .limit(10)
-      .lean();
-    
-    console.log(`✅ Found ${topUsers.length} users with balances`);
-    
-    // ✅ FIX: Format users with photoURL
-    const formattedUsers = topUsers.map((user, index) => ({
-      rank: index + 1,
-      id: user._id,
-      name: user.name || 'Anonymous User',
-      email: user.email,
-      balance: user.balance || 0,
-      photoURL: user.photoURL || user.profilePicture || null,  // ✅ Add this
-      profilePicture: user.photoURL || user.profilePicture || null,
-    }));
-    
-    const totalUsers = await User.countDocuments({ 
-      isActive: true, 
-      balance: { $gt: 0 } 
-    });
-    
-    res.json({
-      success: true,
-      data: {
-        topUsers: formattedUsers,
-        stats: {
-          totalUsersWithBalance: totalUsers,
-          highestBalance: formattedUsers[0]?.balance || 0,
-          lastUpdated: new Date().toISOString()
-        }
-      }
-    });
-  } catch (error) {
-    console.error('❌ Leaderboard error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error fetching leaderboard',
-      error: error.message 
-    });
-  }
-};
 exports.getInviteDetails = async (req, res) => {
   try {
     const { inviteCode } = req.params;
