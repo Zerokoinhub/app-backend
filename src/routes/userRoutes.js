@@ -31,6 +31,48 @@ const upload = multer({
 // ============================================
 // ✅ PROFILE PICTURE UPLOAD
 // ============================================
+// Test daily bonus notification (for manual testing)
+router.post('/test-bonus-notification', verifyFirebaseToken, async (req, res) => {
+  try {
+    const User = require('../models/User');
+    const NotificationService = require('../services/NotificationService');
+    const notificationService = new NotificationService();
+    
+    const user = await User.findOne({ firebaseUid: req.user.uid });
+    
+    if (!user || !user.fcmTokens || user.fcmTokens.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No FCM tokens found for user' 
+      });
+    }
+    
+    const activeToken = user.fcmTokens.find(t => t.isActive);
+    if (!activeToken) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No active FCM token found' 
+      });
+    }
+    
+    const result = await notificationService.sendDailyBonusNotification(
+      activeToken.token,
+      1,  // rank
+      20, // bonus amount
+      user.name || 'Miner'
+    );
+    
+    res.json({
+      success: result.success,
+      message: result.success ? 'Test notification sent!' : 'Failed to send',
+      result: result
+    });
+    
+  } catch (error) {
+    console.error('Test notification error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 router.post('/upload-profile-picture', 
   verifyFirebaseToken,
   (req, res, next) => {
