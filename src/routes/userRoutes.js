@@ -7,7 +7,7 @@ const User = require('../models/User');
 const userController = require('../controllers/userController');
 const { getUserSessions, unlockNextSession, completeSession } = require('../controllers/userController');
 
-// ✅ IMPORT CLOUDINARY CONFIG (MISSING - ADD THIS)
+// ✅ IMPORT CLOUDINARY CONFIG
 const { uploadScreenshots } = require('../config/cloudinary');
 
 // ============================================
@@ -119,7 +119,7 @@ router.post('/upload-profile-picture',
 );
 
 // ============================================
-// ✅ SCREENSHOT UPLOAD ROUTE (FIXED - ONLY ONCE)
+// ✅ SCREENSHOT UPLOAD ROUTE
 // ============================================
 router.post('/upload-screenshots', 
   verifyFirebaseToken, 
@@ -128,27 +128,52 @@ router.post('/upload-screenshots',
 );
 
 // ============================================
-// ✅ ALL OTHER ROUTES
+// ✅ BONUS ROUTES (NEW)
+// ============================================
+router.get('/bonus/status', verifyFirebaseToken, userController.checkBonusStatus);
+router.post('/daily-bonus', verifyFirebaseToken, userController.claimDailyBonus);
+
+// ============================================
+// ✅ LEADERBOARD ROUTES
+// ============================================
+router.get('/leaderboard/complete', userController.getCompleteLeaderboard);
+
+// ============================================
+// ✅ AUTH & USER ROUTES
 // ============================================
 router.post('/register', userController.registerUser);
 router.get('/invite/:inviteCode', userController.getInviteDetails);
 router.post('/referral', userController.processReferral);
+router.post('/sync', verifyFirebaseToken, userController.syncFirebaseUser);
+router.get('/profile', verifyFirebaseToken, userController.getUserProfile);
+router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
+router.get('/user-details', verifyFirebaseToken, userController.getUserDetails);
 
+// ============================================
+// ✅ SESSION ROUTES
+// ============================================
 router.get('/sessions', verifyFirebaseToken, getUserSessions);
 router.post('/unlock', verifyFirebaseToken, unlockNextSession);
 router.post('/complete-session', verifyFirebaseToken, completeSession);
 router.post('/reset-sessions', verifyFirebaseToken, userController.resetUserSessions);
-router.post('/sync', verifyFirebaseToken, userController.syncFirebaseUser);
-router.get('/profile', verifyFirebaseToken, userController.getUserProfile);
-router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
+
+// ============================================
+// ✅ WALLET & BALANCE ROUTES
+// ============================================
 router.put('/wallet-address', verifyFirebaseToken, userController.updateWalletAddress);
-// Add this new route
-router.get('/leaderboard/complete', userController.getCompleteLeaderboard);
-router.get('/count', userController.getUserCount);
-router.put('/calculator-usage', verifyFirebaseToken, userController.incrementCalculatorUsage);
 router.put('/update-balance', verifyFirebaseToken, userController.updateUserBalance);
+router.put('/calculator-usage', verifyFirebaseToken, userController.incrementCalculatorUsage);
+
+// ============================================
+// ✅ NOTIFICATION ROUTES
+// ============================================
 router.post('/fcm-token', verifyFirebaseToken, userController.updateFCMToken);
 router.delete('/fcm-token', verifyFirebaseToken, userController.removeFCMToken);
 router.put('/notification-settings', verifyFirebaseToken, userController.updateNotificationSettings);
+
+// ============================================
+// ✅ UTILITY ROUTES
+// ============================================
+router.get('/count', userController.getUserCount);
 
 module.exports = router;
