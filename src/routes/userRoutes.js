@@ -34,16 +34,20 @@ const upload = multer({
 // ============================================
 // ✅ FORCE PENDING BONUS ROUTE (ADD THIS)
 // ============================================
+
 router.post('/force-pending-bonus', verifyFirebaseToken, async (req, res) => {
   try {
     const { uid } = req.user;
     console.log(`🔵 Force pending bonus for UID: ${uid}`);
     
-    const user = await User.findOne({ firebaseUid: uid });
+    let user = await User.findOne({ firebaseUid: uid });
     
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
+    
+    console.log(`📧 Before - Email: ${user.email}`);
+    console.log(`📦 Before - Pending Bonus: ${JSON.stringify(user.pendingBonus)}`);
     
     // Force create pending bonus
     user.pendingBonus = {
@@ -53,15 +57,28 @@ router.post('/force-pending-bonus', verifyFirebaseToken, async (req, res) => {
       earnedAt: new Date()
     };
     
-    await user.save();
+    // ✅ Use findOneAndUpdate instead of save
+    const updatedUser = await User.findOneAndUpdate(
+      { firebaseUid: uid },
+      { 
+        $set: { 
+          pendingBonus: {
+            amount: 20,
+            rank: 1,
+            claimed: false,
+            earnedAt: new Date()
+          }
+        } 
+      },
+      { new: true }  // Return updated document
+    );
     
-    console.log(`✅ Force created pending bonus for ${user.email}`);
-    console.log(`📦 Pending Bonus: ${JSON.stringify(user.pendingBonus)}`);
+    console.log(`✅ After - Pending Bonus: ${JSON.stringify(updatedUser.pendingBonus)}`);
     
     res.json({ 
       success: true, 
       message: 'Pending bonus created',
-      pendingBonus: user.pendingBonus
+      pendingBonus: updatedUser.pendingBonus
     });
   } catch (error) {
     console.error('Force pending bonus error:', error);
