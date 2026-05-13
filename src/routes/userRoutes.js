@@ -31,6 +31,43 @@ const upload = multer({
 // ============================================
 // ✅ RANK BONUS TRIGGER ROUTE (FIXED PATH)
 // ============================================
+// ============================================
+// ✅ FORCE PENDING BONUS ROUTE (ADD THIS)
+// ============================================
+router.post('/force-pending-bonus', verifyFirebaseToken, async (req, res) => {
+  try {
+    const { uid } = req.user;
+    console.log(`🔵 Force pending bonus for UID: ${uid}`);
+    
+    const user = await User.findOne({ firebaseUid: uid });
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    
+    // Force create pending bonus
+    user.pendingBonus = {
+      amount: 20,
+      rank: 1,
+      claimed: false,
+      earnedAt: new Date()
+    };
+    
+    await user.save();
+    
+    console.log(`✅ Force created pending bonus for ${user.email}`);
+    console.log(`📦 Pending Bonus: ${JSON.stringify(user.pendingBonus)}`);
+    
+    res.json({ 
+      success: true, 
+      message: 'Pending bonus created',
+      pendingBonus: user.pendingBonus
+    });
+  } catch (error) {
+    console.error('Force pending bonus error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 router.post('/trigger-rank-bonus', verifyFirebaseToken, userController.triggerRankBonusNotification);
 
 // ============================================
