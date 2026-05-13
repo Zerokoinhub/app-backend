@@ -99,31 +99,6 @@ const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
 };
 
 // Send notification with claim/cancel buttons
-const sendBonusNotification = async (user, rank, bonusAmount) => {
-  try {
-    const NotificationService = require('../services/notificationService');
-    const notificationService = new NotificationService();
-    
-    const rankEmoji = rank === 1 ? '🥇' : rank === 2 ? '🥈' : '🥉';
-    const rankText = rank === 1 ? 'FIRST' : rank === 2 ? 'SECOND' : 'THIRD';
-    
-    const activeTokens = user.fcmTokens?.filter(t => t.isActive && t.token) || [];
-    
-    for (const tokenInfo of activeTokens) {
-      await notificationService.sendBonusNotificationWithActions(
-        tokenInfo.token,
-        rank,
-        bonusAmount,
-        user.name || 'Miner'
-      );
-    }
-    
-    console.log(`📱 Bonus notification sent to ${user.email} for rank ${rank}`);
-  } catch (error) {
-    console.error('Failed to send bonus notification:', error);
-  }
-};
-
 // Claim bonus from notification
 const claimBonusFromNotification = async (req, res) => {
   try {
