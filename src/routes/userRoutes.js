@@ -29,11 +29,13 @@ const upload = multer({
 });
 
 // ============================================
-// ✅ PROFILE PICTURE UPLOAD
+// ✅ RANK BONUS TRIGGER ROUTE (FIXED)
 // ============================================
-// Test daily bonus notification (for manual testing)
-// routes/userRoutes.js me add karein
-router.post('/users/trigger-rank-bonus', authenticate, userController.triggerRankBonusNotification);
+router.post('/users/trigger-rank-bonus', verifyFirebaseToken, userController.triggerRankBonusNotification);
+
+// ============================================
+// ✅ TEST BONUS NOTIFICATION
+// ============================================
 router.post('/test-bonus-notification', verifyFirebaseToken, async (req, res) => {
   try {
     const User = require('../models/User');
@@ -75,6 +77,10 @@ router.post('/test-bonus-notification', verifyFirebaseToken, async (req, res) =>
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+// ============================================
+// ✅ PROFILE PICTURE UPLOAD
+// ============================================
 router.post('/upload-profile-picture', 
   verifyFirebaseToken,
   (req, res, next) => {
@@ -161,9 +167,13 @@ router.post('/upload-profile-picture',
     }
   }
 );
-// Bonus claim/cancel routes
+
+// ============================================
+// ✅ BONUS CLAIM/CANCEL ROUTES
+// ============================================
 router.post('/bonus/claim', verifyFirebaseToken, userController.claimBonusFromNotification);
 router.post('/bonus/cancel', verifyFirebaseToken, userController.cancelBonusFromNotification);
+
 // ============================================
 // ✅ SCREENSHOT UPLOAD ROUTE
 // ============================================
