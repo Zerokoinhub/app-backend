@@ -287,6 +287,7 @@ const checkBonusStatus = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
 const claimDailyBonus = async (req, res) => {
   try {
     const { uid } = req.user;
@@ -309,25 +310,26 @@ const claimDailyBonus = async (req, res) => {
       return res.json({ success: false, message: 'You are not in top 3' });
     }
     
-    // ✅ Check 24 hours have passed
-    const lastClaimTime = user.lastBonusClaimTime;
+    // Check if 24 hours have passed for manual claim
+    const nextClaimTime = user.bonusTimer?.nextClaimTime;
     let canClaim = false;
+    let hoursLeft = 0;
     
-    if (!lastClaimTime) {
+    if (!nextClaimTime) {
       canClaim = true;
     } else {
-      const hoursSinceLastClaim = (now - lastClaimTime) / (1000 * 60 * 60);
-      canClaim = hoursSinceLastClaim >= 24;
+      const hoursSinceLastClaim = (now - nextClaimTime) / (1000 * 60 * 60);
+      canClaim = hoursSinceLastClaim >= 0;
+      hoursLeft = -Math.min(0, hoursSinceLastClaim);
     }
     
-    // Also check if rank improved
+    // Check if rank improved (can claim immediately)
     const rankImproved = user.lastBonusRank && userRank < user.lastBonusRank;
     
     if (!canClaim && !rankImproved) {
-      const hoursLeft = lastClaimTime ? 24 - ((now - lastClaimTime) / (1000 * 60 * 60)) : 0;
       return res.json({ 
         success: false, 
-        message: `Please wait ${Math.ceil(hoursLeft)} more hours to claim bonus again` 
+        message: `Auto bonus will be added in ${Math.ceil(hoursLeft)} hours` 
       });
     }
     
@@ -338,6 +340,9 @@ const claimDailyBonus = async (req, res) => {
     
     const newBalance = (user.balance || 0) + bonusAmount;
     
+    // Update bonus timer
+    const nextClaim = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    
     await User.findOneAndUpdate(
       { firebaseUid: uid },
       { 
@@ -345,7 +350,11 @@ const claimDailyBonus = async (req, res) => {
           balance: newBalance,
           lastBonusClaimTime: now,
           lastBonusRank: userRank,
-          lastBonusAmount: bonusAmount
+          lastBonusAmount: bonusAmount,
+          'bonusTimer.lastClaimTime': now,
+          'bonusTimer.nextClaimTime': nextClaim,
+          'bonusTimer.autoBonusGiven': false,
+          'bonusTimer.pendingBonus': false
         }
       }
     );
@@ -357,14 +366,16 @@ const claimDailyBonus = async (req, res) => {
         bonusAmount: bonusAmount,
         newBalance: newBalance,
         oldBalance: newBalance - bonusAmount,
-        rank: userRank
+        rank: userRank,
+        nextClaimTime: nextClaim.toISOString()
       }
     });
     
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
-};// ============ NEW: Complete Leaderboard Endpoint ============
+};
+// ============ NEW: Complete Leaderboard Endpoint ============
 const getCompleteLeaderboard = async (req, res) => {
   try {
     console.log('📊 Fetching complete leaderboard...');
