@@ -56,30 +56,33 @@ const sendBonusNotification = async (user, rank, bonusAmount) => {
 
 const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
   try {
+    // Get current rank
     const topUsers = await User.find({}).sort({ balance: -1 }).limit(3).lean();
     const userRank = topUsers.findIndex(u => u.firebaseUid === user.firebaseUid) + 1;
     
-    console.log(`🔍 checkAndGiveBonusOnRankChange - User: ${user.email}, Rank: ${userRank}, Last Bonus Rank: ${user.lastBonusRank}`);
+    console.log(`🔍 Rank Check - User: ${user.email}`);
+    console.log(`   Current Rank: ${userRank}`);
+    console.log(`   Last Bonus Rank: ${user.lastBonusRank}`);
+    console.log(`   Last Claim Time: ${user.lastBonusClaimTime}`);
     
+    // ✅ KYA RANK IMPROVE HUA HAI?
+    const rankImproved = user.lastBonusRank != null && userRank < user.lastBonusRank;
+    
+    // ✅ AGAR RANK TOP 3 MEIN HAI
     if (userRank >= 1 && userRank <= 3) {
-      const now = new Date();
-      const lastClaimTime = user.lastBonusClaimTime;
-      const rankImproved = user.lastBonusRank != null && userRank < user.lastBonusRank;
       
-      console.log(`   rankImproved: ${rankImproved}, lastBonusRank: ${user.lastBonusRank}`);
-      
-      let canClaim = !lastClaimTime || (now - lastClaimTime) >= 24 * 60 * 60 * 1000;
-      
-      if (canClaim || rankImproved) {
+      // ✅ HAR BAR JAB RANK IMPROVE HO, TOH BONUS DO (24 hour ka wait nahi)
+      if (rankImproved) {
         let bonusAmount = userRank === 1 ? 20 : userRank === 2 ? 10 : 5;
         
-        console.log(`🎉 Creating pending bonus for Rank ${userRank}, Amount ${bonusAmount} (rankImproved: ${rankImproved})`);
+        console.log(`🎉 RANK IMPROVED! Creating pending bonus for Rank ${userRank}, Amount ${bonusAmount}`);
         
+        // Create pending bonus immediately
         user.pendingBonus = {
           amount: bonusAmount,
           rank: userRank,
           claimed: false,
-          earnedAt: now
+          earnedAt: new Date()
         };
         
         await user.save();
@@ -88,17 +91,35 @@ const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
         await sendBonusNotification(user, userRank, bonusAmount);
         
         return true;
-      } else {
-        console.log(`⏰ Cannot claim yet - canClaim: ${canClaim}, rankImproved: ${rankImproved}`);
+      }
+      // ✅ AGAR RANK SAME HAI AUR 24 HOURS HO GAYE HAIN
+      else if (!user.lastBonusClaimTime || (new Date() - user.lastBonusClaimTime) >= 24 * 60 * 60 * 1000) {
+        let bonusAmount = userRank === 1 ? 20 : userRank === 2 ? 10 : 5;
+        
+        console.log(`🎉 Time-based bonus for Rank ${userRank}, Amount ${bonusAmount}`);
+        
+        user.pendingBonus = {
+          amount: bonusAmount,
+          rank: userRank,
+          claimed: false,
+          earnedAt: new Date()
+        };
+        
+        await user.save();
+        await sendBonusNotification(user, userRank, bonusAmount);
+        
+        return true;
       }
     }
+    
+    console.log(`❌ No bonus created - Rank: ${userRank}, Improved: ${rankImproved}`);
     return false;
+    
   } catch (error) {
     console.error('Error checking rank bonus:', error);
     return false;
   }
-};
-// FIXED: Add balance when claiming from notification
+};// FIXED: Add balance when claiming from notification
 // userController.js - Replace your claimBonusFromNotification with this
 const claimBonusFromNotification = async (req, res) => {
   try {
@@ -229,16 +250,16 @@ const checkBonusStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
     
-    // ✅ FIRST CHECK: Pending bonus already hai?
+    // ✅ PEHLE CHECK KARO - KYA PENDING BONUS HAI?
     if (user.pendingBonus && !user.pendingBonus.claimed) {
-      console.log(`📊 User has pending bonus: Rank ${user.pendingBonus.rank}, Amount ${user.pendingBonus.amount}`);
+      console.log(`📊 Pending bonus exists: Rank ${user.pendingBonus.rank}`);
       return res.json({
         success: true,
         data: {
           rank: user.pendingBonus.rank,
           isInTop3: true,
           alreadyClaimed: false,
-          canClaim: true,
+          canClaim: true,  // ✅ YAHI SE DIALOG SHOW HOGA
           bonusAmount: user.pendingBonus.amount,
           hoursLeft: 0,
           hasPendingBonus: true
@@ -246,7 +267,7 @@ const checkBonusStatus = async (req, res) => {
       });
     }
     
-    // Get top 3 users
+    // Get current rank
     const topUsers = await User.find({})
       .select('firebaseUid balance')
       .sort({ balance: -1 })
@@ -256,7 +277,7 @@ const checkBonusStatus = async (req, res) => {
     const userRank = topUsers.findIndex(u => u.firebaseUid === uid) + 1;
     const isInTop3 = userRank <= 3 && userRank > 0;
     
-    // Check 24 hours have passed
+    // Check 24 hours
     const lastClaimTime = user.lastBonusClaimTime;
     let alreadyClaimed = false;
     let hoursLeft = 0;
@@ -267,32 +288,31 @@ const checkBonusStatus = async (req, res) => {
       hoursLeft = 24 - hoursSinceLastClaim;
     }
     
-    // ✅ CHECK IF RANK IMPROVED
+    // ✅ RANK IMPROVEMENT CHECK - YEH SABSE IMPORTANT HAI!
     const lastBonusRank = user.lastBonusRank;
     const rankImproved = lastBonusRank != null && userRank < lastBonusRank;
-    
-    console.log(`📊 Rank Check - Current: ${userRank}, Last Bonus Rank: ${lastBonusRank}, Improved: ${rankImproved}`);
     
     let bonusAmount = 0;
     if (userRank === 1) bonusAmount = 20;
     else if (userRank === 2) bonusAmount = 10;
     else if (userRank === 3) bonusAmount = 5;
     
-    // ✅ IMPORTANT: Agar rank improve hua hai toh claim kar sakte ho, chahe 24 hours baki ho
+    // ✅ CAN CLAIM CONDITION - RANK IMPROVE PAR IMMEDIATE CLAIM
     let canClaim = false;
     
     if (isInTop3) {
+      // AGAR RANK IMPROVE HUA HAI - IMMEDIATE CLAIM
       if (rankImproved) {
         canClaim = true;
-        console.log(`🎯 Rank improved from ${lastBonusRank} to ${userRank}! Can claim immediately!`);
-      } else if (!alreadyClaimed) {
+        console.log(`🎯 RANK IMPROVED! Can claim immediately!`);
+      }
+      // AGAR RANK SAME HAI AUR 24 HOURS HO GAYE HAIN
+      else if (!alreadyClaimed) {
         canClaim = true;
       }
     }
     
-    console.log(`📊 Bonus Status - User: ${user.email}, Rank: ${userRank}`);
-    console.log(`   Already Claimed: ${alreadyClaimed}, Rank Improved: ${rankImproved}`);
-    console.log(`   Can Claim: ${canClaim}`);
+    console.log(`📊 Final Status: canClaim=${canClaim}, rankImproved=${rankImproved}`);
     
     res.json({
       success: true,
@@ -301,7 +321,7 @@ const checkBonusStatus = async (req, res) => {
         isInTop3: isInTop3,
         alreadyClaimed: alreadyClaimed,
         rankImproved: rankImproved,
-        canClaim: canClaim,
+        canClaim: canClaim,  // ✅ YAHI SE DIALOG SHOW HOGA
         bonusAmount: bonusAmount,
         hoursLeft: hoursLeft > 0 ? Math.ceil(hoursLeft) : 0,
         lastBonusRank: lastBonusRank
@@ -313,6 +333,7 @@ const checkBonusStatus = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
 const claimDailyBonus = async (req, res) => {
   try {
     const { uid } = req.user;
