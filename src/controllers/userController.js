@@ -14,6 +14,72 @@ const generateInviteCode = () => {
   }
   return code;
 };
+// Admin panel - Update user balance function
+const updateUserBalanceByAdmin = async (req, res) => {
+  try {
+    const { userId, newBalance } = req.body;
+    
+    // Get user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false });
+    }
+    
+    const oldBalance = user.balance;
+    
+    // ✅ GET OLD RANK BEFORE UPDATE
+    const oldTopUsers = await User.find({}).sort({ balance: -1 }).limit(10).lean();
+    const oldRank = oldTopUsers.findIndex(u => u._id.toString() === userId) + 1;
+    
+    // Update balance
+    user.balance = newBalance;
+    await user.save();
+    
+    // ✅ GET NEW RANK AFTER UPDATE
+    const newTopUsers = await User.find({}).sort({ balance: -1 }).limit(10).lean();
+    const newRank = newTopUsers.findIndex(u => u._id.toString() === userId) + 1;
+    
+    console.log(`📊 Admin update - User: ${user.email}`);
+    console.log(`   Old Rank: ${oldRank}, New Rank: ${newRank}`);
+    
+    // ✅ CHECK IF RANK IMPROVED
+    if (newRank < oldRank && newRank >= 1 && newRank <= 3) {
+      const bonusAmount = newRank === 1 ? 20 : newRank === 2 ? 10 : 5;
+      
+      console.log(`🎉 RANK IMPROVED! Creating pending bonus...`);
+      
+      // ✅ CREATE PENDING BONUS AUTOMATICALLY
+      user.pendingBonus = {
+        amount: bonusAmount,
+        rank: newRank,
+        claimed: false,
+        earnedAt: new Date()
+      };
+      
+      // ✅ RESET TIMER
+      user.lastBonusClaimTime = null;
+      
+      await user.save();
+      
+      console.log(`✅ Pending bonus created for rank ${newRank}`);
+      
+      // ✅ OPTIONAL: Send push notification
+      await sendBonusNotification(user, newRank, bonusAmount);
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Balance updated successfully',
+      rankImproved: newRank < oldRank,
+      newRank: newRank,
+      oldRank: oldRank
+    });
+    
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
 // userController.js - Backend
 // Check bonus status for current user
 // ============ REAL-TIME BONUS ON POSITION CHANGE ============
