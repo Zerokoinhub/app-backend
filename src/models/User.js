@@ -7,7 +7,7 @@ const userSchema = new mongoose.Schema({
   nextClaimTime: { type: Date, default: null },
   autoBonusGiven: { type: Boolean, default: false },
   pendingBonus: { type: Boolean, default: false }
-}
+},
   firebaseUid: {
     type: String,
     unique: true,
