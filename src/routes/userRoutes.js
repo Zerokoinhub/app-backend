@@ -7,6 +7,9 @@ const User = require('../models/User');
 const userController = require('../controllers/userController');
 const { getUserSessions, unlockNextSession, completeSession } = require('../controllers/userController');
 
+// ✅ IMPORT MIDDLEWARES (FIXED - YEH ADD KIYA)
+const { authMiddleware, adminMiddleware } = require('../middleware/auth');
+
 // ✅ IMPORT CLOUDINARY CONFIG
 const { uploadScreenshots } = require('../config/cloudinary');
 
@@ -29,63 +32,12 @@ const upload = multer({
 });
 
 // ============================================
-// ✅ RANK BONUS TRIGGER ROUTE (FIXED PATH)
+// ✅ RANK BONUS TRIGGER ROUTE
 // ============================================
-// ============================================
-// ✅ FORCE PENDING BONUS ROUTE (ADD THIS)
-// ============================================
-// Admin route for updating balance
-router.post('/admin/update-user-balance', 
-  authMiddleware, 
-  adminMiddleware, 
-  userController.updateUserBalanceByAdmin
-);
-router.post('/force-pending-bonus', verifyFirebaseToken, async (req, res) => {
-  try {
-    const { uid } = req.user;
-    console.log(`🔵 Force pending bonus for UID: ${uid}`);
-    
-    // ✅ Use findOneAndUpdate with $set
-    const updatedUser = await User.findOneAndUpdate(
-      { firebaseUid: uid },
-      { 
-        $set: { 
-          pendingBonus: {
-            amount: 20,
-            rank: 1,
-            claimed: false,
-            earnedAt: new Date()
-          }
-        } 
-      },
-      { 
-        new: true,  // Return updated document
-        upsert: false 
-      }
-    );
-    
-    if (!updatedUser) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-    
-    console.log(`✅ After update - Pending Bonus: ${JSON.stringify(updatedUser.pendingBonus)}`);
-    console.log(`✅ Balance: ${updatedUser.balance}`);
-    
-    res.json({ 
-      success: true, 
-      message: 'Pending bonus created',
-      pendingBonus: updatedUser.pendingBonus,
-      balance: updatedUser.balance
-    });
-  } catch (error) {
-    console.error('Force pending bonus error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
 router.post('/trigger-rank-bonus', verifyFirebaseToken, userController.triggerRankBonusNotification);
 
 // ============================================
-// ✅ FORCE PENDING BONUS ROUTE (FIXED - NO EXTRA /users)
+// ✅ FORCE PENDING BONUS ROUTE
 // ============================================
 router.post('/force-pending-bonus', verifyFirebaseToken, async (req, res) => {
   try {
@@ -124,7 +76,6 @@ router.post('/force-pending-bonus', verifyFirebaseToken, async (req, res) => {
 // ============================================
 router.post('/test-bonus-notification', verifyFirebaseToken, async (req, res) => {
   try {
-    const User = require('../models/User');
     const NotificationService = require('../services/notificationService');
     const notificationService = new NotificationService();
     
@@ -147,8 +98,8 @@ router.post('/test-bonus-notification', verifyFirebaseToken, async (req, res) =>
     
     const result = await notificationService.sendDailyBonusNotification(
       activeToken.token,
-      1,  // rank
-      20, // bonus amount
+      1,
+      20,
       user.name || 'Miner'
     );
     
@@ -171,14 +122,11 @@ router.post('/upload-profile-picture',
   verifyFirebaseToken,
   (req, res, next) => {
     console.log('📤 Upload request received');
-    console.log('🔍 Content-Type:', req.headers['content-type']);
-    
     const imageUpload = upload.single('image');
     
     imageUpload(req, res, (err) => {
       if (!err && req.file) {
         console.log('✅ File received via field: image');
-        console.log('📁 File name:', req.file.originalname);
         return next();
       }
       
@@ -191,8 +139,6 @@ router.post('/upload-profile-picture',
   },
   async (req, res) => {
     try {
-      console.log('📤 Uploading to Firebase Storage...');
-      
       if (!req.file) {
         return res.status(400).json({ success: false, message: 'No file uploaded' });
       }
@@ -255,21 +201,18 @@ router.post('/upload-profile-picture',
 );
 
 // ============================================
-// ✅ BONUS CLAIM/CANCEL ROUTES
+// ✅ BONUS CLAIM ROUTE
 // ============================================
 router.post('/bonus/claim', verifyFirebaseToken, async (req, res) => {
   try {
     const { uid } = req.user;
     console.log(`🔵 Claim bonus for UID: ${uid}`);
     
-    // ✅ First check if pending bonus exists
     const user = await User.findOne({ firebaseUid: uid });
     
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    
-    console.log(`📦 Current pending bonus: ${JSON.stringify(user.pendingBonus)}`);
     
     if (!user.pendingBonus || user.pendingBonus.claimed) {
       return res.status(400).json({ 
@@ -281,7 +224,6 @@ router.post('/bonus/claim', verifyFirebaseToken, async (req, res) => {
     const bonusAmount = user.pendingBonus.amount;
     const rank = user.pendingBonus.rank;
     
-    // ✅ Use findOneAndUpdate to add balance and clear pending
     const updatedUser = await User.findOneAndUpdate(
       { firebaseUid: uid },
       {
@@ -298,7 +240,6 @@ router.post('/bonus/claim', verifyFirebaseToken, async (req, res) => {
     );
     
     console.log(`✅ Claim successful! +${bonusAmount} coins, new balance: ${updatedUser.balance}`);
-    console.log(`✅ Pending bonus after claim: ${JSON.stringify(updatedUser.pendingBonus)}`);
     
     res.json({
       success: true,
@@ -315,6 +256,7 @@ router.post('/bonus/claim', verifyFirebaseToken, async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
 router.post('/bonus/cancel', verifyFirebaseToken, userController.cancelBonusFromNotification);
 
 // ============================================
@@ -327,14 +269,12 @@ router.post('/upload-screenshots',
 );
 
 // ============================================
-// ✅ BONUS ROUTES (NEW)
+// ✅ DEBUG ROUTE
 // ============================================
-// Add this temporary endpoint in userRoutes.js
 router.get('/debug/direct-pending', verifyFirebaseToken, async (req, res) => {
   try {
     const { uid } = req.user;
     
-    // Direct MongoDB query
     const result = await User.aggregate([
       { $match: { firebaseUid: uid } },
       { $project: { 
@@ -346,18 +286,15 @@ router.get('/debug/direct-pending', verifyFirebaseToken, async (req, res) => {
       }
     ]);
     
-    console.log('🔍 DIRECT DB QUERY RESULT:', JSON.stringify(result, null, 2));
-    
-    res.json({ 
-      success: true, 
-      data: result[0],
-      raw: result
-    });
+    res.json({ success: true, data: result[0] });
   } catch (error) {
-    console.error('Debug error:', error);
     res.status(500).json({ error: error.message });
   }
 });
+
+// ============================================
+// ✅ BONUS ROUTES
+// ============================================
 router.get('/bonus/status', verifyFirebaseToken, userController.checkBonusStatus);
 router.post('/daily-bonus', verifyFirebaseToken, userController.claimDailyBonus);
 
@@ -375,12 +312,14 @@ router.post('/referral', userController.processReferral);
 router.post('/sync', verifyFirebaseToken, userController.syncFirebaseUser);
 router.get('/profile', verifyFirebaseToken, userController.getUserProfile);
 router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
-router.put('/users/balance', 
-  authMiddleware,      // User authenticated hona chahiye
-  adminMiddleware,     // Admin role hona chahiye
+router.get('/user-details', verifyFirebaseToken, userController.getUserDetails);
+
+// ✅ ADMIN ROUTES (FIXED - USING authMiddleware and adminMiddleware)
+router.put('/admin/update-user-balance', 
+  authMiddleware, 
+  adminMiddleware, 
   userController.updateUserBalanceByAdmin
 );
-router.get('/user-details', verifyFirebaseToken, userController.getUserDetails);
 
 // ============================================
 // ✅ SESSION ROUTES
