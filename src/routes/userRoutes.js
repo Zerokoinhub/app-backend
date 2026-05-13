@@ -34,7 +34,12 @@ const upload = multer({
 // ============================================
 // ✅ FORCE PENDING BONUS ROUTE (ADD THIS)
 // ============================================
-
+// Admin route for updating balance
+router.post('/admin/update-user-balance', 
+  authMiddleware, 
+  adminMiddleware, 
+  userController.updateUserBalanceByAdmin
+);
 router.post('/force-pending-bonus', verifyFirebaseToken, async (req, res) => {
   try {
     const { uid } = req.user;
