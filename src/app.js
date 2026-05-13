@@ -9,7 +9,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const cron = require('node-cron');
+// const cron = require('node-cron'); // ✅ REMOVED - using setInterval instead
 const connectDB = require('./config/database');
 const userRoutes = require('./routes/userRoutes');
 const tokenRoutes = require('./routes/tokenRoutes');
@@ -55,7 +55,7 @@ const app = express();
 // ✅ COMPLETE CORS CONFIGURATION (FIXED)
 // ============================================
 app.use(cors({
-  origin: true,  // Allow all origins (for production, specify your domains)
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
@@ -64,10 +64,8 @@ app.use(cors({
   optionsSuccessStatus: 204
 }));
 
-// Handle preflight requests explicitly
 app.options('*', cors());
 
-// Security and logging
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
@@ -83,15 +81,13 @@ const NotificationService = require('./services/notificationService');
 const notificationService = new NotificationService();
 
 // ============================================
-// ✅ AUTO BONUS CRON JOB (Runs every hour)
+// ✅ AUTO BONUS FUNCTION (Runs every hour - No node-cron)
 // ============================================
-cron.schedule('0 * * * *', async () => {
-  console.log('🕐 Checking for pending 24-hour bonuses...', new Date().toISOString());
-  
+const checkAutoBonuses = async () => {
+  console.log('🕐 Checking auto bonuses...', new Date().toISOString());
   try {
     const now = new Date();
     
-    // Find users whose 24 hours have passed and they haven't received auto bonus
     const users = await User.find({
       'bonusTimer.nextClaimTime': { $lte: now },
       'bonusTimer.autoBonusGiven': false,
@@ -101,21 +97,12 @@ cron.schedule('0 * * * *', async () => {
     console.log(`📊 Found ${users.length} users eligible for auto bonus`);
     
     for (const user of users) {
-      // Get current rank
-      const topUsers = await User.find({})
-        .sort({ balance: -1 })
-        .limit(3)
-        .lean();
-      
+      const topUsers = await User.find({}).sort({ balance: -1 }).limit(3).lean();
       const userRank = topUsers.findIndex(u => u.firebaseUid === user.firebaseUid) + 1;
       
       if (userRank >= 1 && userRank <= 3) {
-        let bonusAmount = 0;
-        if (userRank === 1) bonusAmount = 20;
-        else if (userRank === 2) bonusAmount = 10;
-        else if (userRank === 3) bonusAmount = 5;
+        let bonusAmount = userRank === 1 ? 20 : userRank === 2 ? 10 : 5;
         
-        // Add bonus automatically
         user.balance += bonusAmount;
         user.bonusTimer = {
           lastClaimTime: now,
@@ -150,11 +137,14 @@ cron.schedule('0 * * * *', async () => {
       }
     }
   } catch (error) {
-    console.error('❌ Auto bonus cron error:', error);
+    console.error('❌ Auto bonus error:', error);
   }
-}, {
-  timezone: "Asia/Kolkata"
-});
+};
+
+// Run every hour
+setInterval(checkAutoBonuses, 60 * 60 * 1000);
+// Run once on startup after 5 seconds
+setTimeout(checkAutoBonuses, 5000);
 
 // ============================================
 // TEST ENDPOINTS
@@ -409,7 +399,7 @@ const server = app.listen(PORT, () => {
   console.log(`   PUT  /api/settings               - Update settings`);
   console.log('========================================');
   console.log('✅ CORS enabled for all origins');
-  console.log('✅ Auto Bonus Cron Job: Every hour');
+  console.log('✅ Auto Bonus: Every hour (using setInterval)');
   console.log('🌐 Allowed Methods: GET, POST, PUT, DELETE, OPTIONS, PATCH');
   console.log('========================================\n');
 }).on('error', (err) => {
