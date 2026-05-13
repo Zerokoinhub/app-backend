@@ -140,6 +140,7 @@ const claimBonusFromNotification = async (req, res) => {
   }
 };
 // Cancel bonus from notification
+// FIXED: Don't subtract anything (kyunki balance me add nahi kiya tha)
 const cancelBonusFromNotification = async (req, res) => {
   try {
     const { uid } = req.user;
@@ -156,9 +157,11 @@ const cancelBonusFromNotification = async (req, res) => {
       });
     }
     
-    // Remove the bonus that was already added
     const bonusAmount = user.pendingBonus.amount;
-    user.balance -= bonusAmount;
+    
+    // ✅ DON'T subtract from balance (kyunki balance me add nahi kiya tha)
+    // user.balance -= bonusAmount; // ❌ REMOVE THIS LINE
+    
     user.pendingBonus = null;
     await user.save();
     
@@ -176,7 +179,6 @@ const cancelBonusFromNotification = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 // Update this function to trigger bonus check on balance change
 const updateUserBalance = async (req, res) => {
   try {
