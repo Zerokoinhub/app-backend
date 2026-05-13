@@ -53,20 +53,27 @@ const sendBonusNotification = async (user, rank, bonusAmount) => {
   }
 };
 // userController.js - Check this function
+
 const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
   try {
     const topUsers = await User.find({}).sort({ balance: -1 }).limit(3).lean();
     const userRank = topUsers.findIndex(u => u.firebaseUid === user.firebaseUid) + 1;
     
+    console.log(`🔍 checkAndGiveBonusOnRankChange - User: ${user.email}, Rank: ${userRank}, Last Bonus Rank: ${user.lastBonusRank}`);
+    
     if (userRank >= 1 && userRank <= 3) {
       const now = new Date();
       const lastClaimTime = user.lastBonusClaimTime;
-      const rankImproved = user.lastBonusRank && userRank < user.lastBonusRank;
+      const rankImproved = user.lastBonusRank != null && userRank < user.lastBonusRank;
+      
+      console.log(`   rankImproved: ${rankImproved}, lastBonusRank: ${user.lastBonusRank}`);
       
       let canClaim = !lastClaimTime || (now - lastClaimTime) >= 24 * 60 * 60 * 1000;
       
       if (canClaim || rankImproved) {
         let bonusAmount = userRank === 1 ? 20 : userRank === 2 ? 10 : 5;
+        
+        console.log(`🎉 Creating pending bonus for Rank ${userRank}, Amount ${bonusAmount} (rankImproved: ${rankImproved})`);
         
         user.pendingBonus = {
           amount: bonusAmount,
@@ -77,13 +84,12 @@ const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
         
         await user.save();
         
-        // ✅ YEH LINE CHECK KAREIN - KYA YAHAN TAK AA RAHA HAI?
-        console.log(`🎉 Sending notification for Rank ${userRank}, Amount ${bonusAmount}`);
-        
-        // ✅ Send notification
+        // Send notification
         await sendBonusNotification(user, userRank, bonusAmount);
         
         return true;
+      } else {
+        console.log(`⏰ Cannot claim yet - canClaim: ${canClaim}, rankImproved: ${rankImproved}`);
       }
     }
     return false;
@@ -91,7 +97,7 @@ const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
     console.error('Error checking rank bonus:', error);
     return false;
   }
-};// Claim bonus from notification
+};
 // FIXED: Add balance when claiming from notification
 // userController.js - Replace your claimBonusFromNotification with this
 const claimBonusFromNotification = async (req, res) => {
