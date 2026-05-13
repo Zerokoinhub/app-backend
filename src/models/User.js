@@ -2,6 +2,12 @@ const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
   // ============ AUTHENTICATION & PROFILE ============
+  bonusTimer: {
+  lastClaimTime: { type: Date, default: null },
+  nextClaimTime: { type: Date, default: null },
+  autoBonusGiven: { type: Boolean, default: false },
+  pendingBonus: { type: Boolean, default: false }
+}
   firebaseUid: {
     type: String,
     unique: true,
