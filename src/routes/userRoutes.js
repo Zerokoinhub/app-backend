@@ -370,6 +370,11 @@ router.post('/referral', userController.processReferral);
 router.post('/sync', verifyFirebaseToken, userController.syncFirebaseUser);
 router.get('/profile', verifyFirebaseToken, userController.getUserProfile);
 router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
+router.put('/users/balance', 
+  authMiddleware,      // User authenticated hona chahiye
+  adminMiddleware,     // Admin role hona chahiye
+  userController.updateUserBalanceByAdmin
+);
 router.get('/user-details', verifyFirebaseToken, userController.getUserDetails);
 
 // ============================================
