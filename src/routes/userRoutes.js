@@ -38,6 +38,37 @@ const upload = multer({
 // Note: app.js mounts this router at '/api/users'
 // So final URL will be: /api/users/trigger-rank-bonus ✅
 router.post('/trigger-rank-bonus', verifyFirebaseToken, userController.triggerRankBonusNotification);
+// userRoutes.js - Add this temporary endpoint
+router.post('/users/force-pending-bonus', verifyFirebaseToken, async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const user = await User.findOne({ firebaseUid: uid });
+    
+    if (!user) {
+      return res.status(404).json({ success: false });
+    }
+    
+    // Force create pending bonus
+    user.pendingBonus = {
+      amount: 20,
+      rank: 1,
+      claimed: false,
+      earnedAt: new Date()
+    };
+    
+    await user.save();
+    
+    console.log(`✅ Force created pending bonus for ${user.email}`);
+    
+    res.json({ 
+      success: true, 
+      message: 'Pending bonus created',
+      pendingBonus: user.pendingBonus
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 // ============================================
 // ✅ TEST BONUS NOTIFICATION
 // ============================================
