@@ -94,7 +94,6 @@ const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
 };// Claim bonus from notification
 // FIXED: Add balance when claiming from notification
 // userController.js - Replace your claimBonusFromNotification with this
-
 const claimBonusFromNotification = async (req, res) => {
   try {
     const { uid } = req.user;
@@ -104,7 +103,7 @@ const claimBonusFromNotification = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
     
-    // ✅ Check if there's a pending bonus
+    // ✅ Check pending bonus
     if (!user.pendingBonus || user.pendingBonus.claimed) {
       return res.status(400).json({ 
         success: false, 
@@ -115,10 +114,10 @@ const claimBonusFromNotification = async (req, res) => {
     const bonusAmount = user.pendingBonus.amount;
     const rank = user.pendingBonus.rank;
     
-    // ✅ ADD BALANCE HERE (This is the main fix!)
+    // ✅ ADD BALANCE HERE (YEH IMPORTANT HAI!)
     user.balance = (user.balance || 0) + bonusAmount;
     
-    // ✅ Mark as claimed
+    // ✅ Mark as claimed and clear pending
     user.pendingBonus.claimed = true;
     user.pendingBonus.claimedAt = new Date();
     user.lastBonusClaimTime = new Date();
@@ -143,8 +142,7 @@ const claimBonusFromNotification = async (req, res) => {
     console.error('Error claiming bonus:', error);
     res.status(500).json({ success: false, error: error.message });
   }
-};// Cancel bonus from notification
-// FIXED: Don't subtract anything (kyunki balance me add nahi kiya tha)
+};// FIXED: Don't subtract anything (kyunki balance me add nahi kiya tha)
 const cancelBonusFromNotification = async (req, res) => {
   try {
     const { uid } = req.user;
