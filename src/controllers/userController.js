@@ -321,6 +321,25 @@ const updateUserBalance = async (req, res) => {
     res.status(500).json({ message: 'Error updating user balance', error: error.message });
   }
 };
+// Admin panel mein yeh function use karo
+async function updateUserBalanceViaAPI(userId, amount) {
+  // Pehle user ka Firebase UID find karo
+  const user = await db.users.findOne({ _id: userId });
+  
+  const response = await fetch('https://zerokoinapp-production.up.railway.app/api/users/update-balance', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${adminToken}`  // Admin ka token
+    },
+    body: JSON.stringify({
+      uid: user.firebaseUid,
+      amount: amount  // Positive ya negative amount
+    })
+  });
+  
+  return await response.json();
+}
 const checkBonusStatus = async (req, res) => {
   try {
     const { uid } = req.user;
