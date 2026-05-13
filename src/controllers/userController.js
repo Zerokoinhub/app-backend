@@ -92,6 +92,7 @@ const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
     return false;
   }
 };// Claim bonus from notification
+// FIXED: Add balance when claiming from notification
 const claimBonusFromNotification = async (req, res) => {
   try {
     const { uid } = req.user;
@@ -111,9 +112,16 @@ const claimBonusFromNotification = async (req, res) => {
     const bonusAmount = user.pendingBonus.amount;
     const rank = user.pendingBonus.rank;
     
-    // Bonus already added when rank changed, so just mark as claimed
+    // ✅ ADD BALANCE HERE
+    user.balance = (user.balance || 0) + bonusAmount;
+    
+    // Mark as claimed
     user.pendingBonus.claimed = true;
     user.pendingBonus.claimedAt = new Date();
+    user.lastBonusClaimTime = new Date();
+    user.lastBonusRank = rank;
+    user.lastBonusAmount = bonusAmount;
+    
     await user.save();
     
     res.json({
@@ -131,7 +139,6 @@ const claimBonusFromNotification = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 // Cancel bonus from notification
 const cancelBonusFromNotification = async (req, res) => {
   try {
