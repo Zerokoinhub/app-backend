@@ -223,7 +223,7 @@ const checkBonusStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
     
-    // ✅ FIRST CHECK: Agar pending bonus already hai aur claimed nahi hai
+    // ✅ FIRST CHECK: Pending bonus already hai?
     if (user.pendingBonus && !user.pendingBonus.claimed) {
       console.log(`📊 User has pending bonus: Rank ${user.pendingBonus.rank}, Amount ${user.pendingBonus.amount}`);
       return res.json({
@@ -261,17 +261,22 @@ const checkBonusStatus = async (req, res) => {
       hoursLeft = 24 - hoursSinceLastClaim;
     }
     
-    // Check if rank improved
-    const rankImproved = user.lastBonusRank && userRank < user.lastBonusRank;
+    // ✅ CHECK IF RANK IMPROVED (YEH IMPORTANT HAI!)
+    const lastBonusRank = user.lastBonusRank;
+    const rankImproved = lastBonusRank != null && userRank < lastBonusRank;
+    
+    console.log(`📊 Rank Check - Current: ${userRank}, Last Bonus Rank: ${lastBonusRank}, Improved: ${rankImproved}`);
     
     let bonusAmount = 0;
     if (userRank === 1) bonusAmount = 20;
     else if (userRank === 2) bonusAmount = 10;
     else if (userRank === 3) bonusAmount = 5;
     
+    // ✅ CAN CLAIM IF: in top 3 AND (not already claimed OR rank improved)
     const canClaim = isInTop3 && (!alreadyClaimed || rankImproved);
     
     console.log(`📊 Bonus Status - User: ${user.email}, Rank: ${userRank}`);
+    console.log(`   Already Claimed: ${alreadyClaimed}, Rank Improved: ${rankImproved}`);
     console.log(`   Can Claim: ${canClaim}`);
     
     res.json({
@@ -280,10 +285,11 @@ const checkBonusStatus = async (req, res) => {
         rank: userRank,
         isInTop3: isInTop3,
         alreadyClaimed: alreadyClaimed,
+        rankImproved: rankImproved,
         canClaim: canClaim,
         bonusAmount: bonusAmount,
         hoursLeft: hoursLeft > 0 ? Math.ceil(hoursLeft) : 0,
-        hasPendingBonus: false
+        lastBonusRank: lastBonusRank
       }
     });
     
