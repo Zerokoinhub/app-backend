@@ -9,6 +9,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const cron = require('node-cron');
 const connectDB = require('./config/database');
 const userRoutes = require('./routes/userRoutes');
 const tokenRoutes = require('./routes/tokenRoutes');
@@ -78,6 +79,82 @@ app.use(express.urlencoded({ extended: true }));
 // MODELS
 // ============================================
 const User = require('./models/User');
+const NotificationService = require('./services/notificationService');
+const notificationService = new NotificationService();
+
+// ============================================
+// ✅ AUTO BONUS CRON JOB (Runs every hour)
+// ============================================
+cron.schedule('0 * * * *', async () => {
+  console.log('🕐 Checking for pending 24-hour bonuses...', new Date().toISOString());
+  
+  try {
+    const now = new Date();
+    
+    // Find users whose 24 hours have passed and they haven't received auto bonus
+    const users = await User.find({
+      'bonusTimer.nextClaimTime': { $lte: now },
+      'bonusTimer.autoBonusGiven': false,
+      isActive: true
+    });
+    
+    console.log(`📊 Found ${users.length} users eligible for auto bonus`);
+    
+    for (const user of users) {
+      // Get current rank
+      const topUsers = await User.find({})
+        .sort({ balance: -1 })
+        .limit(3)
+        .lean();
+      
+      const userRank = topUsers.findIndex(u => u.firebaseUid === user.firebaseUid) + 1;
+      
+      if (userRank >= 1 && userRank <= 3) {
+        let bonusAmount = 0;
+        if (userRank === 1) bonusAmount = 20;
+        else if (userRank === 2) bonusAmount = 10;
+        else if (userRank === 3) bonusAmount = 5;
+        
+        // Add bonus automatically
+        user.balance += bonusAmount;
+        user.bonusTimer = {
+          lastClaimTime: now,
+          nextClaimTime: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+          autoBonusGiven: false,
+          pendingBonus: false
+        };
+        user.lastBonusAmount = bonusAmount;
+        user.lastBonusRank = userRank;
+        
+        await user.save();
+        
+        // Send push notification
+        const rankEmoji = userRank === 1 ? '🥇' : userRank === 2 ? '🥈' : '🥉';
+        const activeTokens = user.fcmTokens?.filter(t => t.isActive && t.token) || [];
+        
+        for (const tokenInfo of activeTokens) {
+          await notificationService.sendNotificationToUser(
+            tokenInfo.token,
+            '🎉 Daily Bonus Added!',
+            `${rankEmoji} Your ${bonusAmount} coins have been automatically added to your balance!`,
+            { 
+              type: 'auto_bonus', 
+              amount: bonusAmount.toString(), 
+              rank: userRank.toString(),
+              newBalance: user.balance.toString()
+            }
+          );
+        }
+        
+        console.log(`✅ Auto bonus: +${bonusAmount} coins to ${user.name || user.email} (Rank ${userRank})`);
+      }
+    }
+  } catch (error) {
+    console.error('❌ Auto bonus cron error:', error);
+  }
+}, {
+  timezone: "Asia/Kolkata"
+});
 
 // ============================================
 // TEST ENDPOINTS
@@ -156,6 +233,12 @@ app.post('/api/users/sync', async (req, res) => {
         role: 'user',
         inviteCode: inviteCode,
         lastLogin: new Date(),
+        bonusTimer: {
+          lastClaimTime: null,
+          nextClaimTime: null,
+          autoBonusGiven: false,
+          pendingBonus: false
+        },
         sessions: [
           { sessionNumber: 1, isLocked: false },
           { sessionNumber: 2, isLocked: true },
@@ -326,6 +409,7 @@ const server = app.listen(PORT, () => {
   console.log(`   PUT  /api/settings               - Update settings`);
   console.log('========================================');
   console.log('✅ CORS enabled for all origins');
+  console.log('✅ Auto Bonus Cron Job: Every hour');
   console.log('🌐 Allowed Methods: GET, POST, PUT, DELETE, OPTIONS, PATCH');
   console.log('========================================\n');
 }).on('error', (err) => {
