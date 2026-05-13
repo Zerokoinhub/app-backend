@@ -58,13 +58,27 @@ const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
     const userRank = topUsers.findIndex(u => u.firebaseUid === user.firebaseUid) + 1;
     
     if (userRank >= 1 && userRank <= 3) {
-      // Check if already claimed bonus for this rank today
-      const today = new Date().toISOString().split('T')[0];
-      const lastClaimDate = user.lastBonusClaimDate;
+      // ✅ NEW: Check 24 hours have passed, not just date
+      const now = new Date();
+      const lastClaimTime = user.lastBonusClaimTime;
       const lastClaimedRank = user.lastBonusRank;
       
-      // If rank changed or not claimed today
-      if (lastClaimDate !== today || lastClaimedRank !== userRank) {
+      // Check if 24 hours have passed since last claim
+      let canClaim = false;
+      
+      if (!lastClaimTime) {
+        // Never claimed before
+        canClaim = true;
+      } else {
+        // Check 24 hours difference
+        const hoursSinceLastClaim = (now - lastClaimTime) / (1000 * 60 * 60);
+        canClaim = hoursSinceLastClaim >= 24;
+      }
+      
+      // Also check if rank improved (can claim immediately)
+      const rankImproved = lastClaimedRank && userRank < lastClaimedRank;
+      
+      if (canClaim || rankImproved) {
         let bonusAmount = 0;
         if (userRank === 1) bonusAmount = 20;
         else if (userRank === 2) bonusAmount = 10;
@@ -72,23 +86,26 @@ const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
         
         // Add bonus
         user.balance += bonusAmount;
-        user.lastBonusClaimDate = today;
+        user.lastBonusClaimTime = now;  // ✅ Store timestamp, not date
         user.lastBonusRank = userRank;
         user.lastBonusAmount = bonusAmount;
         user.pendingBonus = {
           amount: bonusAmount,
           rank: userRank,
           claimed: false,
-          earnedAt: new Date()
+          earnedAt: now
         };
         
         await user.save();
         
-        // Send notification with Claim/Cancel buttons
+        // Send notification
         await sendBonusNotification(user, userRank, bonusAmount);
         
         console.log(`🎉 Bonus awarded to ${user.name}: Rank ${userRank}, +${bonusAmount} coins`);
         return true;
+      } else {
+        const timeLeft = lastClaimTime ? 24 - ((now - lastClaimTime) / (1000 * 60 * 60)) : 0;
+        console.log(`⏰ User ${user.name} must wait ${timeLeft.toFixed(1)} more hours for bonus`);
       }
     }
     return false;
@@ -96,9 +113,7 @@ const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
     console.error('Error checking rank bonus:', error);
     return false;
   }
-};
-
-// Send notification with claim/cancel buttons
+};// Send notification with claim/cancel buttons
 // Claim bonus from notification
 const claimBonusFromNotification = async (req, res) => {
   try {
@@ -213,9 +228,8 @@ const updateUserBalance = async (req, res) => {
 const checkBonusStatus = async (req, res) => {
   try {
     const { uid } = req.user;
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
     
-    // Get current user
     const user = await User.findOne({ firebaseUid: uid });
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
@@ -228,23 +242,33 @@ const checkBonusStatus = async (req, res) => {
       .limit(3)
       .lean();
     
-    // Find user's rank
     const userRank = topUsers.findIndex(u => u.firebaseUid === uid) + 1;
     const isInTop3 = userRank <= 3 && userRank > 0;
     
-    // Check if already claimed today
-    const alreadyClaimed = user.lastBonusClaimDate === today;
+    // ✅ Check 24 hours have passed
+    const lastClaimTime = user.lastBonusClaimTime;
+    let alreadyClaimed = false;
+    let hoursLeft = 0;
     
-    // Calculate bonus amount
+    if (lastClaimTime) {
+      const hoursSinceLastClaim = (now - lastClaimTime) / (1000 * 60 * 60);
+      alreadyClaimed = hoursSinceLastClaim < 24;
+      hoursLeft = 24 - hoursSinceLastClaim;
+    }
+    
+    // Check if rank improved (can claim regardless of time)
+    const rankImproved = user.lastBonusRank && userRank < user.lastBonusRank;
+    
     let bonusAmount = 0;
     if (userRank === 1) bonusAmount = 20;
     else if (userRank === 2) bonusAmount = 10;
     else if (userRank === 3) bonusAmount = 5;
     
-    // Can claim only if in top 3 and not claimed today
-    const canClaim = isInTop3 && !alreadyClaimed;
+    const canClaim = isInTop3 && (!alreadyClaimed || rankImproved);
     
-    console.log(`📊 Bonus Status - User: ${user.email}, Rank: ${userRank}, Can Claim: ${canClaim}`);
+    console.log(`📊 Bonus Status - User: ${user.email}, Rank: ${userRank}`);
+    console.log(`   Can Claim: ${canClaim}`);
+    console.log(`   Hours left: ${hoursLeft > 0 ? hoursLeft.toFixed(1) : 0}`);
     
     res.json({
       success: true,
@@ -253,7 +277,8 @@ const checkBonusStatus = async (req, res) => {
         isInTop3: isInTop3,
         alreadyClaimed: alreadyClaimed,
         canClaim: canClaim,
-        bonusAmount: bonusAmount
+        bonusAmount: bonusAmount,
+        hoursLeft: hoursLeft > 0 ? Math.ceil(hoursLeft) : 0  // ✅ Return hours left
       }
     });
     
@@ -265,7 +290,12 @@ const checkBonusStatus = async (req, res) => {
 const claimDailyBonus = async (req, res) => {
   try {
     const { uid } = req.user;
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    
+    const user = await User.findOne({ firebaseUid: uid });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
     
     // Get top 3 users
     const topUsers = await User.find({})
@@ -273,46 +303,53 @@ const claimDailyBonus = async (req, res) => {
       .limit(3)
       .lean();
     
-    // Check if user is in top 3
     const userRank = topUsers.findIndex(u => u.firebaseUid === uid) + 1;
+    
+    if (userRank < 1 || userRank > 3) {
+      return res.json({ success: false, message: 'You are not in top 3' });
+    }
+    
+    // ✅ Check 24 hours have passed
+    const lastClaimTime = user.lastBonusClaimTime;
+    let canClaim = false;
+    
+    if (!lastClaimTime) {
+      canClaim = true;
+    } else {
+      const hoursSinceLastClaim = (now - lastClaimTime) / (1000 * 60 * 60);
+      canClaim = hoursSinceLastClaim >= 24;
+    }
+    
+    // Also check if rank improved
+    const rankImproved = user.lastBonusRank && userRank < user.lastBonusRank;
+    
+    if (!canClaim && !rankImproved) {
+      const hoursLeft = lastClaimTime ? 24 - ((now - lastClaimTime) / (1000 * 60 * 60)) : 0;
+      return res.json({ 
+        success: false, 
+        message: `Please wait ${Math.ceil(hoursLeft)} more hours to claim bonus again` 
+      });
+    }
     
     let bonusAmount = 0;
     if (userRank === 1) bonusAmount = 20;
     else if (userRank === 2) bonusAmount = 10;
     else if (userRank === 3) bonusAmount = 5;
-    else {
-      return res.json({ 
-        success: false, 
-        message: 'You are not in top 3' 
-      });
-    }
     
-    // Check if already claimed today
-    const user = await User.findOne({ firebaseUid: uid });
-    if (user.lastBonusClaimDate === today) {
-      return res.json({ 
-        success: false, 
-        message: 'Already claimed today' 
-      });
-    }
-    
-    // ✅ ADD BONUS TO BALANCE
     const newBalance = (user.balance || 0) + bonusAmount;
     
-    // Update user
     await User.findOneAndUpdate(
       { firebaseUid: uid },
       { 
         $set: { 
           balance: newBalance,
-          lastBonusClaimDate: today,
+          lastBonusClaimTime: now,
           lastBonusRank: userRank,
           lastBonusAmount: bonusAmount
         }
       }
     );
     
-    // ✅ RETURN UPDATED BALANCE
     res.json({
       success: true,
       message: `You got ${bonusAmount} coins!`,
@@ -327,8 +364,7 @@ const claimDailyBonus = async (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
-};
-// ============ NEW: Complete Leaderboard Endpoint ============
+};// ============ NEW: Complete Leaderboard Endpoint ============
 const getCompleteLeaderboard = async (req, res) => {
   try {
     console.log('📊 Fetching complete leaderboard...');
