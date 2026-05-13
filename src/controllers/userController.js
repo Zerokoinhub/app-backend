@@ -1162,4 +1162,6 @@ exports.getCompleteLeaderboard = getCompleteLeaderboard;
 // Add this at the VERY END of userController.js
 exports.checkBonusStatus = checkBonusStatus;
 exports.claimDailyBonus = claimDailyBonus;
- 
+// Add these missing exports at the VERY END
+exports.claimBonusFromNotification = claimBonusFromNotification;
+exports.cancelBonusFromNotification = cancelBonusFromNotification; 
