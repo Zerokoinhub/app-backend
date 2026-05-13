@@ -32,7 +32,8 @@ const sendBonusNotification = async (user, rank, bonusAmount) => {
     }
     
     for (const tokenInfo of activeTokens) {
-      const result = await notificationService.sendRankBonusNotification(
+      // ✅ FIXED: Use the correct function name
+      const result = await notificationService.sendRankBonusNotificationWithActions(
         tokenInfo.token,
         rank,
         bonusAmount,
