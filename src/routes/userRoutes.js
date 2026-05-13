@@ -29,23 +29,20 @@ const upload = multer({
 });
 
 // ============================================
-// ✅ RANK BONUS TRIGGER ROUTE (FIXED)
-// ============================================
-// userRoutes.js me path change karo
-// ============================================
 // ✅ RANK BONUS TRIGGER ROUTE (FIXED PATH)
 // ============================================
-// Note: app.js mounts this router at '/api/users'
-// So final URL will be: /api/users/trigger-rank-bonus ✅
 router.post('/trigger-rank-bonus', verifyFirebaseToken, userController.triggerRankBonusNotification);
-// userRoutes.js - Add this temporary endpoint
-router.post('/users/force-pending-bonus', verifyFirebaseToken, async (req, res) => {
+
+// ============================================
+// ✅ FORCE PENDING BONUS ROUTE (FIXED - NO EXTRA /users)
+// ============================================
+router.post('/force-pending-bonus', verifyFirebaseToken, async (req, res) => {
   try {
     const { uid } = req.user;
     const user = await User.findOne({ firebaseUid: uid });
     
     if (!user) {
-      return res.status(404).json({ success: false });
+      return res.status(404).json({ success: false, message: 'User not found' });
     }
     
     // Force create pending bonus
@@ -66,9 +63,11 @@ router.post('/users/force-pending-bonus', verifyFirebaseToken, async (req, res) 
       pendingBonus: user.pendingBonus
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Force pending bonus error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
+
 // ============================================
 // ✅ TEST BONUS NOTIFICATION
 // ============================================
