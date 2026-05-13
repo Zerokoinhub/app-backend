@@ -32,8 +32,12 @@ const upload = multer({
 // ✅ RANK BONUS TRIGGER ROUTE (FIXED)
 // ============================================
 // userRoutes.js me path change karo
-router.post('/api/users/trigger-rank-bonus', verifyFirebaseToken, userController.triggerRankBonusNotification);
-
+// ============================================
+// ✅ RANK BONUS TRIGGER ROUTE (FIXED PATH)
+// ============================================
+// Note: app.js mounts this router at '/api/users'
+// So final URL will be: /api/users/trigger-rank-bonus ✅
+router.post('/trigger-rank-bonus', verifyFirebaseToken, userController.triggerRankBonusNotification);
 // ============================================
 // ✅ TEST BONUS NOTIFICATION
 // ============================================
