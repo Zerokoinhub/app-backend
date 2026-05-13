@@ -1414,3 +1414,5 @@ exports.claimDailyBonus = claimDailyBonus;
 // Add these missing exports at the VERY END
 exports.claimBonusFromNotification = claimBonusFromNotification;
 exports.cancelBonusFromNotification = cancelBonusFromNotification; 
+// userController.js - Sabse end mein add karein
+exports.updateUserBalanceByAdmin = updateUserBalanceByAdmin;
