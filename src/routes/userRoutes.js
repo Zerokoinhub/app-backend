@@ -32,6 +32,8 @@ const upload = multer({
 // ✅ PROFILE PICTURE UPLOAD
 // ============================================
 // Test daily bonus notification (for manual testing)
+// routes/userRoutes.js me add karein
+router.post('/users/trigger-rank-bonus', authenticate, userController.triggerRankBonusNotification);
 router.post('/test-bonus-notification', verifyFirebaseToken, async (req, res) => {
   try {
     const User = require('../models/User');
