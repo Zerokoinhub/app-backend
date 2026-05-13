@@ -16,6 +16,198 @@ const generateInviteCode = () => {
 };
 // userController.js - Backend
 // Check bonus status for current user
+// ============ REAL-TIME BONUS ON POSITION CHANGE ============
+
+// Check and give bonus when user's rank changes
+const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
+  try {
+    // Get current top 3 users
+    const topUsers = await User.find({})
+      .sort({ balance: -1 })
+      .limit(3)
+      .lean();
+    
+    // Check if user is in top 3
+    const userRank = topUsers.findIndex(u => u.firebaseUid === user.firebaseUid) + 1;
+    
+    if (userRank >= 1 && userRank <= 3) {
+      // Check if already claimed bonus for this rank today
+      const today = new Date().toISOString().split('T')[0];
+      const lastClaimDate = user.lastBonusClaimDate;
+      const lastClaimedRank = user.lastBonusRank;
+      
+      // If rank changed or not claimed today
+      if (lastClaimDate !== today || lastClaimedRank !== userRank) {
+        let bonusAmount = 0;
+        if (userRank === 1) bonusAmount = 20;
+        else if (userRank === 2) bonusAmount = 10;
+        else if (userRank === 3) bonusAmount = 5;
+        
+        // Add bonus
+        user.balance += bonusAmount;
+        user.lastBonusClaimDate = today;
+        user.lastBonusRank = userRank;
+        user.lastBonusAmount = bonusAmount;
+        user.pendingBonus = {
+          amount: bonusAmount,
+          rank: userRank,
+          claimed: false,
+          earnedAt: new Date()
+        };
+        
+        await user.save();
+        
+        // Send notification with Claim/Cancel buttons
+        await sendBonusNotification(user, userRank, bonusAmount);
+        
+        console.log(`🎉 Bonus awarded to ${user.name}: Rank ${userRank}, +${bonusAmount} coins`);
+        return true;
+      }
+    }
+    return false;
+  } catch (error) {
+    console.error('Error checking rank bonus:', error);
+    return false;
+  }
+};
+
+// Send notification with claim/cancel buttons
+const sendBonusNotification = async (user, rank, bonusAmount) => {
+  try {
+    const NotificationService = require('../services/notificationService');
+    const notificationService = new NotificationService();
+    
+    const rankEmoji = rank === 1 ? '🥇' : rank === 2 ? '🥈' : '🥉';
+    const rankText = rank === 1 ? 'FIRST' : rank === 2 ? 'SECOND' : 'THIRD';
+    
+    const activeTokens = user.fcmTokens?.filter(t => t.isActive && t.token) || [];
+    
+    for (const tokenInfo of activeTokens) {
+      await notificationService.sendBonusNotificationWithActions(
+        tokenInfo.token,
+        rank,
+        bonusAmount,
+        user.name || 'Miner'
+      );
+    }
+    
+    console.log(`📱 Bonus notification sent to ${user.email} for rank ${rank}`);
+  } catch (error) {
+    console.error('Failed to send bonus notification:', error);
+  }
+};
+
+// Claim bonus from notification
+const claimBonusFromNotification = async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const user = await User.findOne({ firebaseUid: uid });
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    
+    if (!user.pendingBonus || user.pendingBonus.claimed) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No pending bonus to claim' 
+      });
+    }
+    
+    const bonusAmount = user.pendingBonus.amount;
+    const rank = user.pendingBonus.rank;
+    
+    // Bonus already added when rank changed, so just mark as claimed
+    user.pendingBonus.claimed = true;
+    user.pendingBonus.claimedAt = new Date();
+    await user.save();
+    
+    res.json({
+      success: true,
+      message: `You claimed ${bonusAmount} coins!`,
+      data: {
+        bonusAmount: bonusAmount,
+        rank: rank,
+        newBalance: user.balance
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error claiming bonus:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// Cancel bonus from notification
+const cancelBonusFromNotification = async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const user = await User.findOne({ firebaseUid: uid });
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    
+    if (!user.pendingBonus || user.pendingBonus.claimed) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No pending bonus to cancel' 
+      });
+    }
+    
+    // Remove the bonus that was already added
+    const bonusAmount = user.pendingBonus.amount;
+    user.balance -= bonusAmount;
+    user.pendingBonus = null;
+    await user.save();
+    
+    res.json({
+      success: true,
+      message: 'Bonus cancelled',
+      data: {
+        removedAmount: bonusAmount,
+        newBalance: user.balance
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error cancelling bonus:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// Update this function to trigger bonus check on balance change
+const updateUserBalance = async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const { amount } = req.body;
+    
+    if (typeof amount !== 'number') {
+      return res.status(400).json({ message: 'Amount must be a number' });
+    }
+    
+    const user = await User.findOne({ firebaseUid: uid });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    const oldBalance = user.balance;
+    user.balance += amount;
+    await user.save();
+    
+    // ✅ Check if rank changed and give bonus
+    await checkAndGiveBonusOnRankChange(user, oldBalance, user.balance);
+    
+    res.status(200).json({
+      message: 'User balance updated successfully',
+      newBalance: user.balance,
+    });
+    
+  } catch (error) {
+    console.error('Update user balance error:', error.message);
+    res.status(500).json({ message: 'Error updating user balance', error: error.message });
+  }
+};
 const checkBonusStatus = async (req, res) => {
   try {
     const { uid } = req.user;
