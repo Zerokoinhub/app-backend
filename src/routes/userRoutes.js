@@ -315,9 +315,7 @@ router.put('/profile', verifyFirebaseToken, userController.updateUserProfile);
 router.get('/user-details', verifyFirebaseToken, userController.getUserDetails);
 
 // ✅ ADMIN ROUTES (FIXED - USING authMiddleware and adminMiddleware)
-router.put('/admin/update-user-balance', 
-  authMiddleware, 
-  adminMiddleware, 
+router.put('/admin/update-user-balance', verifyFirebaseToken, 
   userController.updateUserBalanceByAdmin
 );
 
