@@ -40,24 +40,7 @@ router.post('/force-pending-bonus', verifyFirebaseToken, async (req, res) => {
     const { uid } = req.user;
     console.log(`🔵 Force pending bonus for UID: ${uid}`);
     
-    let user = await User.findOne({ firebaseUid: uid });
-    
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-    
-    console.log(`📧 Before - Email: ${user.email}`);
-    console.log(`📦 Before - Pending Bonus: ${JSON.stringify(user.pendingBonus)}`);
-    
-    // Force create pending bonus
-    user.pendingBonus = {
-      amount: 20,
-      rank: 1,
-      claimed: false,
-      earnedAt: new Date()
-    };
-    
-    // ✅ Use findOneAndUpdate instead of save
+    // ✅ Use findOneAndUpdate with $set
     const updatedUser = await User.findOneAndUpdate(
       { firebaseUid: uid },
       { 
@@ -70,15 +53,24 @@ router.post('/force-pending-bonus', verifyFirebaseToken, async (req, res) => {
           }
         } 
       },
-      { new: true }  // Return updated document
+      { 
+        new: true,  // Return updated document
+        upsert: false 
+      }
     );
     
-    console.log(`✅ After - Pending Bonus: ${JSON.stringify(updatedUser.pendingBonus)}`);
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    
+    console.log(`✅ After update - Pending Bonus: ${JSON.stringify(updatedUser.pendingBonus)}`);
+    console.log(`✅ Balance: ${updatedUser.balance}`);
     
     res.json({ 
       success: true, 
       message: 'Pending bonus created',
-      pendingBonus: updatedUser.pendingBonus
+      pendingBonus: updatedUser.pendingBonus,
+      balance: updatedUser.balance
     });
   } catch (error) {
     console.error('Force pending bonus error:', error);
@@ -260,7 +252,64 @@ router.post('/upload-profile-picture',
 // ============================================
 // ✅ BONUS CLAIM/CANCEL ROUTES
 // ============================================
-router.post('/bonus/claim', verifyFirebaseToken, userController.claimBonusFromNotification);
+router.post('/bonus/claim', verifyFirebaseToken, async (req, res) => {
+  try {
+    const { uid } = req.user;
+    console.log(`🔵 Claim bonus for UID: ${uid}`);
+    
+    // ✅ First check if pending bonus exists
+    const user = await User.findOne({ firebaseUid: uid });
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    
+    console.log(`📦 Current pending bonus: ${JSON.stringify(user.pendingBonus)}`);
+    
+    if (!user.pendingBonus || user.pendingBonus.claimed) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No pending bonus to claim' 
+      });
+    }
+    
+    const bonusAmount = user.pendingBonus.amount;
+    const rank = user.pendingBonus.rank;
+    
+    // ✅ Use findOneAndUpdate to add balance and clear pending
+    const updatedUser = await User.findOneAndUpdate(
+      { firebaseUid: uid },
+      {
+        $inc: { balance: bonusAmount },
+        $set: {
+          'pendingBonus.claimed': true,
+          'pendingBonus.claimedAt': new Date(),
+          lastBonusClaimTime: new Date(),
+          lastBonusRank: rank,
+          lastBonusAmount: bonusAmount
+        }
+      },
+      { new: true }
+    );
+    
+    console.log(`✅ Claim successful! +${bonusAmount} coins, new balance: ${updatedUser.balance}`);
+    console.log(`✅ Pending bonus after claim: ${JSON.stringify(updatedUser.pendingBonus)}`);
+    
+    res.json({
+      success: true,
+      message: `You claimed ${bonusAmount} coins!`,
+      data: {
+        bonusAmount: bonusAmount,
+        rank: rank,
+        oldBalance: updatedUser.balance - bonusAmount,
+        newBalance: updatedUser.balance
+      }
+    });
+  } catch (error) {
+    console.error('Error claiming bonus:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 router.post('/bonus/cancel', verifyFirebaseToken, userController.cancelBonusFromNotification);
 
 // ============================================
