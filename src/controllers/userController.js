@@ -21,25 +21,30 @@ const generateInviteCode = () => {
 // Check and give bonus when user's rank changes
 const sendBonusNotification = async (user, rank, bonusAmount) => {
   try {
-    const NotificationService = require('../services/notificationService');
-    const notificationService = new NotificationService();
+    console.log(`📱 Attempting to send notification to ${user.email}`);
+    console.log(`   FCM Tokens: ${JSON.stringify(user.fcmTokens)}`);
     
     const activeTokens = user.fcmTokens?.filter(t => t.isActive && t.token) || [];
+    
+    console.log(`   Active tokens count: ${activeTokens.length}`);
     
     if (activeTokens.length === 0) {
       console.log(`⚠️ No active FCM tokens for user ${user.email}`);
       return;
     }
     
+    const NotificationService = require('../services/notificationService');
+    const notificationService = new NotificationService();
+    
     for (const tokenInfo of activeTokens) {
-      // ✅ FIXED: Use the correct function name
+      console.log(`📱 Sending to token: ${tokenInfo.token.substring(0, 20)}...`);
       const result = await notificationService.sendRankBonusNotificationWithActions(
         tokenInfo.token,
         rank,
         bonusAmount,
         user.name || 'Miner'
       );
-      console.log(`📱 Notification sent to ${user.email}: ${result.success}`);
+      console.log(`📱 Result: ${JSON.stringify(result)}`);
     }
     
     console.log(`✅ Bonus notification sent to ${user.email} for rank ${rank}`);
@@ -47,49 +52,22 @@ const sendBonusNotification = async (user, rank, bonusAmount) => {
     console.error('Failed to send bonus notification:', error);
   }
 };
+// userController.js - Check this function
 const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
   try {
-    // Get current top 3 users
-    const topUsers = await User.find({})
-      .sort({ balance: -1 })
-      .limit(3)
-      .lean();
-    
-    // Check if user is in top 3
+    const topUsers = await User.find({}).sort({ balance: -1 }).limit(3).lean();
     const userRank = topUsers.findIndex(u => u.firebaseUid === user.firebaseUid) + 1;
     
     if (userRank >= 1 && userRank <= 3) {
-      // ✅ NEW: Check 24 hours have passed, not just date
       const now = new Date();
       const lastClaimTime = user.lastBonusClaimTime;
-      const lastClaimedRank = user.lastBonusRank;
+      const rankImproved = user.lastBonusRank && userRank < user.lastBonusRank;
       
-      // Check if 24 hours have passed since last claim
-      let canClaim = false;
-      
-      if (!lastClaimTime) {
-        // Never claimed before
-        canClaim = true;
-      } else {
-        // Check 24 hours difference
-        const hoursSinceLastClaim = (now - lastClaimTime) / (1000 * 60 * 60);
-        canClaim = hoursSinceLastClaim >= 24;
-      }
-      
-      // Also check if rank improved (can claim immediately)
-      const rankImproved = lastClaimedRank && userRank < lastClaimedRank;
+      let canClaim = !lastClaimTime || (now - lastClaimTime) >= 24 * 60 * 60 * 1000;
       
       if (canClaim || rankImproved) {
-        let bonusAmount = 0;
-        if (userRank === 1) bonusAmount = 20;
-        else if (userRank === 2) bonusAmount = 10;
-        else if (userRank === 3) bonusAmount = 5;
+        let bonusAmount = userRank === 1 ? 20 : userRank === 2 ? 10 : 5;
         
-        // Add bonus
-        user.balance += bonusAmount;
-        user.lastBonusClaimTime = now;  // ✅ Store timestamp, not date
-        user.lastBonusRank = userRank;
-        user.lastBonusAmount = bonusAmount;
         user.pendingBonus = {
           amount: bonusAmount,
           rank: userRank,
@@ -99,14 +77,13 @@ const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
         
         await user.save();
         
-        // Send notification
+        // ✅ YEH LINE CHECK KAREIN - KYA YAHAN TAK AA RAHA HAI?
+        console.log(`🎉 Sending notification for Rank ${userRank}, Amount ${bonusAmount}`);
+        
+        // ✅ Send notification
         await sendBonusNotification(user, userRank, bonusAmount);
         
-        console.log(`🎉 Bonus awarded to ${user.name}: Rank ${userRank}, +${bonusAmount} coins`);
         return true;
-      } else {
-        const timeLeft = lastClaimTime ? 24 - ((now - lastClaimTime) / (1000 * 60 * 60)) : 0;
-        console.log(`⏰ User ${user.name} must wait ${timeLeft.toFixed(1)} more hours for bonus`);
       }
     }
     return false;
@@ -114,8 +91,7 @@ const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
     console.error('Error checking rank bonus:', error);
     return false;
   }
-};// Send notification with claim/cancel buttons
-// Claim bonus from notification
+};// Claim bonus from notification
 const claimBonusFromNotification = async (req, res) => {
   try {
     const { uid } = req.user;
