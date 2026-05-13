@@ -225,6 +225,23 @@ const checkBonusStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
     
+    // ✅ FIRST CHECK: Agar pending bonus already hai aur claimed nahi hai
+    if (user.pendingBonus && !user.pendingBonus.claimed) {
+      console.log(`📊 User has pending bonus: Rank ${user.pendingBonus.rank}, Amount ${user.pendingBonus.amount}`);
+      return res.json({
+        success: true,
+        data: {
+          rank: user.pendingBonus.rank,
+          isInTop3: true,
+          alreadyClaimed: false,
+          canClaim: true,
+          bonusAmount: user.pendingBonus.amount,
+          hoursLeft: 0,
+          hasPendingBonus: true
+        }
+      });
+    }
+    
     // Get top 3 users
     const topUsers = await User.find({})
       .select('firebaseUid balance')
@@ -235,7 +252,7 @@ const checkBonusStatus = async (req, res) => {
     const userRank = topUsers.findIndex(u => u.firebaseUid === uid) + 1;
     const isInTop3 = userRank <= 3 && userRank > 0;
     
-    // ✅ Check 24 hours have passed
+    // Check 24 hours have passed
     const lastClaimTime = user.lastBonusClaimTime;
     let alreadyClaimed = false;
     let hoursLeft = 0;
@@ -246,7 +263,7 @@ const checkBonusStatus = async (req, res) => {
       hoursLeft = 24 - hoursSinceLastClaim;
     }
     
-    // Check if rank improved (can claim regardless of time)
+    // Check if rank improved
     const rankImproved = user.lastBonusRank && userRank < user.lastBonusRank;
     
     let bonusAmount = 0;
@@ -258,7 +275,6 @@ const checkBonusStatus = async (req, res) => {
     
     console.log(`📊 Bonus Status - User: ${user.email}, Rank: ${userRank}`);
     console.log(`   Can Claim: ${canClaim}`);
-    console.log(`   Hours left: ${hoursLeft > 0 ? hoursLeft.toFixed(1) : 0}`);
     
     res.json({
       success: true,
@@ -268,7 +284,8 @@ const checkBonusStatus = async (req, res) => {
         alreadyClaimed: alreadyClaimed,
         canClaim: canClaim,
         bonusAmount: bonusAmount,
-        hoursLeft: hoursLeft > 0 ? Math.ceil(hoursLeft) : 0  // ✅ Return hours left
+        hoursLeft: hoursLeft > 0 ? Math.ceil(hoursLeft) : 0,
+        hasPendingBonus: false
       }
     });
     
@@ -277,7 +294,6 @@ const checkBonusStatus = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 const claimDailyBonus = async (req, res) => {
   try {
     const { uid } = req.user;
