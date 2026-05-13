@@ -2,12 +2,6 @@ const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
   // ============ AUTHENTICATION & PROFILE ============
-  bonusTimer: {
-  lastClaimTime: { type: Date, default: null },
-  nextClaimTime: { type: Date, default: null },
-  autoBonusGiven: { type: Boolean, default: false },
-  pendingBonus: { type: Boolean, default: false }
-},
   firebaseUid: {
     type: String,
     unique: true,
@@ -58,6 +52,39 @@ const userSchema = new mongoose.Schema({
   recentAmount: {
     type: Number,
     default: 0
+  },
+  
+  // ============ RANK BONUS SYSTEM (FIXED) ============
+  pendingBonus: {
+    type: {
+      amount: { type: Number, default: 0 },
+      rank: { type: Number, default: 0 },
+      claimed: { type: Boolean, default: false },
+      earnedAt: { type: Date },
+      claimedAt: { type: Date }
+    },
+    default: null
+  },
+  
+  lastBonusClaimTime: {
+    type: Date,
+    default: null
+  },
+  lastBonusRank: {
+    type: Number,
+    default: null
+  },
+  lastBonusAmount: {
+    type: Number,
+    default: null
+  },
+  
+  // ============ BONUS TIMER ============
+  bonusTimer: {
+    lastClaimTime: { type: Date, default: null },
+    nextClaimTime: { type: Date, default: null },
+    autoBonusGiven: { type: Boolean, default: false },
+    pendingBonus: { type: Boolean, default: false }
   },
   
   // ============ SESSIONS ============
@@ -197,8 +224,7 @@ const userSchema = new mongoose.Schema({
     }
   }]
 }, {
-  // ✅ Add timestamps for better tracking
-  timestamps: true // This adds createdAt and updatedAt automatically
+  timestamps: true
 });
 
 // ============ INDEXES FOR PERFORMANCE ============
@@ -208,6 +234,8 @@ userSchema.index({ inviteCode: 1 });
 userSchema.index({ 'sessions.sessionNumber': 1 });
 userSchema.index({ 'sessions.isLocked': 1 });
 userSchema.index({ 'sessions.nextUnlockAt': 1 });
+userSchema.index({ pendingBonus: 1 });
+userSchema.index({ lastBonusClaimTime: 1 });
 
 // ============ PRE-SAVE MIDDLEWARE ============
 userSchema.pre('save', function(next) {
@@ -259,21 +287,18 @@ userSchema.methods.getSession = function(sessionNumber) {
 userSchema.methods.isSessionUnlocked = function(sessionNumber) {
   const session = this.getSession(sessionNumber);
   if (!session) return false;
-  
   return !session.isLocked;
 };
 
 userSchema.methods.isSessionCompleted = function(sessionNumber) {
   const session = this.getSession(sessionNumber);
   if (!session) return false;
-  
   return session.completedAt !== null;
 };
 
 userSchema.methods.getNextUnlockTime = function(sessionNumber) {
   const session = this.getSession(sessionNumber);
   if (!session) return null;
-  
   return session.nextUnlockAt;
 };
 
@@ -281,7 +306,6 @@ userSchema.methods.addBalance = async function(amount) {
   if (amount <= 0) {
     throw new Error('Amount must be positive');
   }
-  
   this.balance += amount;
   this.recentAmount = amount;
   return this.save();
@@ -301,22 +325,18 @@ userSchema.methods.completeSession = async function(sessionNumber, coinsToAdd = 
     throw new Error(`Session ${sessionNumber} already completed`);
   }
   
-  // Mark as completed
   session.completedAt = new Date();
-  session.isLocked = true; // Lock after completion
+  session.isLocked = true;
   session.lastUpdated = new Date();
   
-  // Add coins to balance
   this.balance += coinsToAdd;
   this.recentAmount = coinsToAdd;
   this.lastSessionCompletedAt = new Date();
   
-  // If this is session 4, mark cycle completion
   if (sessionNumber === 4) {
     this.lastSessionCycleCompletedAt = new Date();
   }
   
-  // Update the session in the array
   const sessionIndex = this.sessions.findIndex(s => s.sessionNumber === sessionNumber);
   if (sessionIndex !== -1) {
     this.sessions[sessionIndex] = session;
@@ -348,7 +368,6 @@ userSchema.methods.resetAllSessions = async function() {
 
 userSchema.methods.initializeSessions = async function() {
   if (this.sessions && this.sessions.length > 0) {
-    // Already has sessions, just update status
     return this.updateSessionStatuses();
   }
   
@@ -406,12 +425,10 @@ userSchema.methods.updateSessionStatuses = function() {
   this.sessions = this.sessions.map(session => {
     const sessionCopy = { ...session };
     
-    // Convert nextUnlockAt to Date if it's a string
     if (sessionCopy.nextUnlockAt && typeof sessionCopy.nextUnlockAt === 'string') {
       sessionCopy.nextUnlockAt = new Date(sessionCopy.nextUnlockAt);
     }
     
-    // If session is locked and nextUnlockAt has passed, unlock it
     if (sessionCopy.isLocked && sessionCopy.nextUnlockAt) {
       if (now >= sessionCopy.nextUnlockAt) {
         sessionCopy.isLocked = false;
@@ -432,6 +449,42 @@ userSchema.methods.updateSessionStatuses = function() {
   return this;
 };
 
+// ============ RANK BONUS METHODS ============
+userSchema.methods.setPendingBonus = function(amount, rank) {
+  this.pendingBonus = {
+    amount: amount,
+    rank: rank,
+    claimed: false,
+    earnedAt: new Date()
+  };
+  return this;
+};
+
+userSchema.methods.claimPendingBonus = function() {
+  if (!this.pendingBonus || this.pendingBonus.claimed) {
+    return false;
+  }
+  
+  const bonusAmount = this.pendingBonus.amount;
+  this.balance += bonusAmount;
+  this.pendingBonus.claimed = true;
+  this.pendingBonus.claimedAt = new Date();
+  this.lastBonusClaimTime = new Date();
+  this.lastBonusRank = this.pendingBonus.rank;
+  this.lastBonusAmount = bonusAmount;
+  
+  return true;
+};
+
+userSchema.methods.clearPendingBonus = function() {
+  this.pendingBonus = null;
+  return this;
+};
+
+userSchema.methods.hasPendingBonus = function() {
+  return !!(this.pendingBonus && !this.pendingBonus.claimed);
+};
+
 // ============ VIRTUAL FIELDS ============
 userSchema.virtual('completedSessionsCount').get(function() {
   if (!this.sessions) return 0;
@@ -450,8 +503,6 @@ userSchema.virtual('totalEarnedFromSessions').get(function() {
 
 userSchema.virtual('nextSessionToComplete').get(function() {
   if (!this.sessions) return null;
-  
-  // Find first session that is unlocked but not completed
   return this.sessions.find(s => !s.isLocked && s.completedAt === null);
 });
 
@@ -459,13 +510,9 @@ userSchema.virtual('nextSessionToComplete').get(function() {
 userSchema.set('toJSON', {
   virtuals: true,
   transform: function(doc, ret) {
-    // Remove sensitive/technical fields
     delete ret.__v;
     delete ret._id;
-    
-    // Convert _id to id
     ret.id = doc._id;
-    
     return ret;
   }
 });
