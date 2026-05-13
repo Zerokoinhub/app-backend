@@ -1192,6 +1192,77 @@ exports.getUserDetails = async (req, res) => {
     });
   }
 };
+// userController.js me add karein - END me
+
+// Manual trigger for rank bonus notification
+const triggerRankBonusNotification = async (req, res) => {
+  try {
+    const { uid } = req.user;
+    console.log(`🔔 Manual trigger for user: ${uid}`);
+    
+    const user = await User.findOne({ firebaseUid: uid });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    
+    // Get current rank
+    const topUsers = await User.find({}).sort({ balance: -1 }).limit(3).lean();
+    const userRank = topUsers.findIndex(u => u.firebaseUid === uid) + 1;
+    
+    console.log(`   User rank: ${userRank}`);
+    
+    if (userRank >= 1 && userRank <= 3) {
+      const bonusAmount = userRank === 1 ? 20 : userRank === 2 ? 10 : 5;
+      
+      // Check if already claimed today
+      const now = new Date();
+      const lastClaimTime = user.lastBonusClaimTime;
+      let alreadyClaimed = false;
+      
+      if (lastClaimTime) {
+        const hoursSinceLastClaim = (now - lastClaimTime) / (1000 * 60 * 60);
+        alreadyClaimed = hoursSinceLastClaim < 24;
+      }
+      
+      if (!alreadyClaimed) {
+        // Store pending bonus
+        user.pendingBonus = {
+          amount: bonusAmount,
+          rank: userRank,
+          claimed: false,
+          earnedAt: now
+        };
+        await user.save();
+        
+        // Send notification
+        await sendBonusNotification(user, userRank, bonusAmount);
+        
+        return res.json({ 
+          success: true, 
+          message: `Notification sent for rank ${userRank}, +${bonusAmount} coins`,
+          rank: userRank,
+          bonusAmount: bonusAmount
+        });
+      } else {
+        return res.json({ 
+          success: false, 
+          message: 'Already claimed today. Try again after 24 hours.'
+        });
+      }
+    } else {
+      return res.json({ 
+        success: false, 
+        message: `User not in top 3. Current rank: ${userRank}`
+      });
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// Export
+exports.triggerRankBonusNotification = triggerRankBonusNotification;
 // Export missing functions
 exports.getCompleteLeaderboard = getCompleteLeaderboard;
 // Add this at the VERY END of userController.js
