@@ -159,7 +159,9 @@ router.post('/upload-profile-picture',
     }
   }
 );
-
+// Bonus claim/cancel routes
+router.post('/bonus/claim', verifyFirebaseToken, userController.claimBonusFromNotification);
+router.post('/bonus/cancel', verifyFirebaseToken, userController.cancelBonusFromNotification);
 // ============================================
 // ✅ SCREENSHOT UPLOAD ROUTE
 // ============================================
