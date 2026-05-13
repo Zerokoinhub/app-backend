@@ -31,7 +31,8 @@ const upload = multer({
 // ============================================
 // ✅ RANK BONUS TRIGGER ROUTE (FIXED)
 // ============================================
-router.post('/users/trigger-rank-bonus', verifyFirebaseToken, userController.triggerRankBonusNotification);
+// userRoutes.js me path change karo
+router.post('/api/users/trigger-rank-bonus', verifyFirebaseToken, userController.triggerRankBonusNotification);
 
 // ============================================
 // ✅ TEST BONUS NOTIFICATION
