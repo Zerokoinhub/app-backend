@@ -16,14 +16,16 @@ class NotificationService {
 
       const message = {
         token: fcmToken,
+        notification: {
+          title: title,
+          body: body,
+        },
         data: {
           ...data,
           timestamp: Date.now().toString(),
           title: title,
           body: body,
           click_action: 'FLUTTER_NOTIFICATION_CLICK',
-          action_open: 'true',
-          action_dismiss: 'true',
         },
         android: {
           priority: 'high',
@@ -35,9 +37,6 @@ class NotificationService {
             title: String(title),
             body: String(body),
             click_action: 'FLUTTER_NOTIFICATION_CLICK',
-            action_open: 'true',
-            action_dismiss: 'true',
-            has_actions: 'true'
           }
         },
         apns: {
@@ -47,11 +46,7 @@ class NotificationService {
               badge: 1,
               sound: 'default',
               'content-available': 1,
-              category: 'ZEROKOIN_CATEGORY',
             },
-            click_action: 'FLUTTER_NOTIFICATION_CLICK',
-            action_open: 'true',
-            action_dismiss: 'true',
           },
           headers: {
             'apns-priority': '10',
@@ -75,9 +70,9 @@ class NotificationService {
     }
   }
 
-  // ============ REAL-TIME RANK BONUS NOTIFICATION (WITH CLAIM/CANCEL BUTTONS) ============
+  // ============ RANK BONUS NOTIFICATION WITH CLAIM/CANCEL BUTTONS ============
   
-  async sendRankBonusNotification(fcmToken, rank, bonusAmount, userName = 'Miner') {
+  async sendRankBonusNotificationWithActions(fcmToken, rank, bonusAmount, userName = 'Miner') {
     const rankEmoji = rank === 1 ? '🥇' : rank === 2 ? '🥈' : '🥉';
     const rankText = rank === 1 ? 'FIRST' : rank === 2 ? 'SECOND' : 'THIRD';
     
@@ -101,8 +96,8 @@ class NotificationService {
         color: '#FFD700',
         priority: 'high',
         actions: [
-          { action: 'CLAIM_ACTION', title: 'Claim 🎁', icon: '@drawable/ic_claim' },
-          { action: 'CANCEL_ACTION', title: 'Cancel ❌', icon: '@drawable/ic_cancel' }
+          { action: 'CLAIM_ACTION', title: 'Claim 🎁' },
+          { action: 'CANCEL_ACTION', title: 'Cancel ❌' }
         ]
       },
       data: {
@@ -113,36 +108,34 @@ class NotificationService {
       }
     };
     
-    // iOS configuration
-    const apnsConfig = {
-      payload: {
-        aps: {
-          alert: { title, body },
-          badge: 1,
-          sound: 'default',
-          'content-available': 1,
-          category: 'RANK_BONUS_CATEGORY'
-        },
-        data: data
-      },
-      headers: {
-        'apns-priority': '10',
-      },
-      fcm_options: {
-        image: 'https://firebasestorage.googleapis.com/.../trophy.png'
-      }
-    };
-    
     const message = {
       token: fcmToken,
+      notification: {
+        title: title,
+        body: body,
+      },
       data: data,
       android: androidConfig,
-      apns: apnsConfig,
+      apns: {
+        payload: {
+          aps: {
+            alert: { title, body },
+            badge: 1,
+            sound: 'default',
+            'content-available': 1,
+            category: 'RANK_BONUS_CATEGORY'
+          },
+          data: data
+        },
+        headers: {
+          'apns-priority': '10',
+        },
+      },
     };
     
     try {
       const response = await this.messaging.send(message);
-      console.log(`✅ Rank bonus notification sent: Rank ${rank}, +${bonusAmount} coins to ${userName}`);
+      console.log(`✅ Rank bonus notification with buttons sent: Rank ${rank}, +${bonusAmount} coins`);
       return { success: true, messageId: response };
     } catch (error) {
       console.error('❌ Error sending rank bonus notification:', error);
@@ -150,7 +143,7 @@ class NotificationService {
     }
   }
 
-  // Send rank bonus notification to specific user (call when rank changes)
+  // Send rank bonus notification to user (call when rank changes)
   async sendRankBonusToUser(user, rank, bonusAmount) {
     try {
       const activeTokens = user.fcmTokens?.filter(t => t.isActive && t.token) || [];
@@ -162,7 +155,7 @@ class NotificationService {
       
       const results = [];
       for (const tokenInfo of activeTokens) {
-        const result = await this.sendRankBonusNotification(
+        const result = await this.sendRankBonusNotificationWithActions(
           tokenInfo.token,
           rank,
           bonusAmount,
@@ -179,7 +172,49 @@ class NotificationService {
     }
   }
 
-  // ============ DAILY BONUS NOTIFICATION (9 AM) ============
+  // ============ AUTO BONUS NOTIFICATION (NO BUTTONS) ============
+  
+  async sendAutoBonusNotification(fcmToken, rank, bonusAmount, userName = 'Miner') {
+    const rankEmoji = rank === 1 ? '🥇' : rank === 2 ? '🥈' : '🥉';
+    const rankText = rank === 1 ? 'FIRST' : rank === 2 ? 'SECOND' : 'THIRD';
+    
+    const title = `🎉 Bonus Added!`;
+    const body = `${rankEmoji} Congratulations ${userName}! You're in ${rankText} place! ${bonusAmount} coins added to your balance!`;
+    
+    const data = {
+      type: 'auto_bonus',
+      rank: rank.toString(),
+      bonusAmount: bonusAmount.toString(),
+    };
+    
+    const message = {
+      token: fcmToken,
+      notification: {
+        title: title,
+        body: body,
+      },
+      data: data,
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: 'auto_bonus',
+          icon: '@drawable/ic_trophy',
+          color: '#FFD700',
+        }
+      },
+    };
+    
+    try {
+      const response = await this.messaging.send(message);
+      console.log(`✅ Auto bonus notification sent: +${bonusAmount} to ${userName}`);
+      return { success: true, messageId: response };
+    } catch (error) {
+      console.error('❌ Error sending auto bonus notification:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // ============ DAILY BONUS NOTIFICATION ============
   
   async sendDailyBonusNotification(fcmToken, rank, bonusAmount, userName = 'Miner') {
     const rankEmoji = rank === 1 ? '🥇' : rank === 2 ? '🥈' : '🥉';
@@ -193,7 +228,6 @@ class NotificationService {
       rank: rank.toString(),
       bonusAmount: bonusAmount.toString(),
       screen: 'leaderboard',
-      action: 'claim_bonus'
     };
 
     return await this.sendNotificationToUser(fcmToken, title, body, data);
@@ -268,22 +302,6 @@ class NotificationService {
       console.error('❌ Error sending daily bonus notifications:', error);
       return [];
     }
-  }
-
-  // ============ REMINDER NOTIFICATION ============
-  
-  async sendBonusReminder(fcmToken, rank, bonusAmount) {
-    const title = `⏰ Bonus Reminder!`;
-    const body = `Don't forget to claim your daily bonus of ${bonusAmount} coins! You're still in top ${rank} position.`;
-    
-    const data = {
-      type: 'bonus_reminder',
-      rank: rank.toString(),
-      bonusAmount: bonusAmount.toString(),
-      screen: 'leaderboard'
-    };
-
-    return await this.sendNotificationToUser(fcmToken, title, body, data);
   }
 
   // ============ SESSION NOTIFICATION ============
