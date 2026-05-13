@@ -53,7 +53,6 @@ const sendBonusNotification = async (user, rank, bonusAmount) => {
   }
 };
 // userController.js - Check this function
-
 const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
   try {
     // Get current rank
@@ -71,11 +70,21 @@ const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
     // ✅ AGAR RANK TOP 3 MEIN HAI
     if (userRank >= 1 && userRank <= 3) {
       
-      // ✅ HAR BAR JAB RANK IMPROVE HO, TOH BONUS DO (24 hour ka wait nahi)
+      // ✅ JAB BHI RANK IMPROVE HO - PURANA TIMER RESET KARO!
       if (rankImproved) {
         let bonusAmount = userRank === 1 ? 20 : userRank === 2 ? 10 : 5;
         
         console.log(`🎉 RANK IMPROVED! Creating pending bonus for Rank ${userRank}, Amount ${bonusAmount}`);
+        
+        // ✅ IMPORTANT: Purana timer reset karo
+        user.lastBonusClaimTime = null;  // Reset claim time
+        user.lastBonusRank = null;        // Reset last rank (purana hatao)
+        user.bonusTimer = {
+          lastClaimTime: null,
+          nextClaimTime: null,
+          autoBonusGiven: false,
+          pendingBonus: false
+        };
         
         // Create pending bonus immediately
         user.pendingBonus = {
@@ -119,8 +128,7 @@ const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
     console.error('Error checking rank bonus:', error);
     return false;
   }
-};// FIXED: Add balance when claiming from notification
-// userController.js - Replace your claimBonusFromNotification with this
+};// userController.js - Replace your claimBonusFromNotification with this
 const claimBonusFromNotification = async (req, res) => {
   try {
     const { uid } = req.user;
@@ -130,7 +138,6 @@ const claimBonusFromNotification = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
     
-    // ✅ Check pending bonus
     if (!user.pendingBonus || user.pendingBonus.claimed) {
       return res.status(400).json({ 
         success: false, 
@@ -141,15 +148,23 @@ const claimBonusFromNotification = async (req, res) => {
     const bonusAmount = user.pendingBonus.amount;
     const rank = user.pendingBonus.rank;
     
-    // ✅ ADD BALANCE HERE (YEH IMPORTANT HAI!)
+    // ✅ Add balance
     user.balance = (user.balance || 0) + bonusAmount;
     
-    // ✅ Mark as claimed and clear pending
+    // ✅ Mark as claimed
     user.pendingBonus.claimed = true;
     user.pendingBonus.claimedAt = new Date();
     user.lastBonusClaimTime = new Date();
     user.lastBonusRank = rank;
     user.lastBonusAmount = bonusAmount;
+    
+    // ✅ Set next claim time (24 hours from now)
+    user.bonusTimer = {
+      lastClaimTime: new Date(),
+      nextClaimTime: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      autoBonusGiven: false,
+      pendingBonus: false
+    };
     
     await user.save();
     
@@ -169,7 +184,7 @@ const claimBonusFromNotification = async (req, res) => {
     console.error('Error claiming bonus:', error);
     res.status(500).json({ success: false, error: error.message });
   }
-};// FIXED: Don't subtract anything (kyunki balance me add nahi kiya tha)
+};
 const cancelBonusFromNotification = async (req, res) => {
   try {
     const { uid } = req.user;
@@ -259,7 +274,7 @@ const checkBonusStatus = async (req, res) => {
           rank: user.pendingBonus.rank,
           isInTop3: true,
           alreadyClaimed: false,
-          canClaim: true,  // ✅ YAHI SE DIALOG SHOW HOGA
+          canClaim: true,
           bonusAmount: user.pendingBonus.amount,
           hoursLeft: 0,
           hasPendingBonus: true
@@ -271,48 +286,51 @@ const checkBonusStatus = async (req, res) => {
     const topUsers = await User.find({})
       .select('firebaseUid balance')
       .sort({ balance: -1 })
-      .limit(3)
+      .limit(10)
       .lean();
     
     const userRank = topUsers.findIndex(u => u.firebaseUid === uid) + 1;
     const isInTop3 = userRank <= 3 && userRank > 0;
     
-    // Check 24 hours
-    const lastClaimTime = user.lastBonusClaimTime;
+    // ✅ RANK IMPROVEMENT CHECK - AGAR IMPROVE HUA TO TIMER IGNORE KARO
+    const lastBonusRank = user.lastBonusRank;
+    const rankImproved = lastBonusRank != null && userRank < lastBonusRank;
+    
     let alreadyClaimed = false;
     let hoursLeft = 0;
     
-    if (lastClaimTime) {
-      const hoursSinceLastClaim = (now - lastClaimTime) / (1000 * 60 * 60);
-      alreadyClaimed = hoursSinceLastClaim < 24;
-      hoursLeft = 24 - hoursSinceLastClaim;
+    // ✅ AGAR RANK IMPROVE HUA HAI TO ALREADY CLAIMED FALSE KARO
+    if (!rankImproved) {
+      const lastClaimTime = user.lastBonusClaimTime;
+      if (lastClaimTime) {
+        const hoursSinceLastClaim = (now - lastClaimTime) / (1000 * 60 * 60);
+        alreadyClaimed = hoursSinceLastClaim < 24;
+        hoursLeft = 24 - hoursSinceLastClaim;
+      }
+    } else {
+      console.log(`🎯 RANK IMPROVED! Resetting timer for user ${user.email}`);
+      alreadyClaimed = false;
+      hoursLeft = 0;
     }
-    
-    // ✅ RANK IMPROVEMENT CHECK - YEH SABSE IMPORTANT HAI!
-    const lastBonusRank = user.lastBonusRank;
-    const rankImproved = lastBonusRank != null && userRank < lastBonusRank;
     
     let bonusAmount = 0;
     if (userRank === 1) bonusAmount = 20;
     else if (userRank === 2) bonusAmount = 10;
     else if (userRank === 3) bonusAmount = 5;
     
-    // ✅ CAN CLAIM CONDITION - RANK IMPROVE PAR IMMEDIATE CLAIM
+    // ✅ CAN CLAIM CONDITION
     let canClaim = false;
     
     if (isInTop3) {
-      // AGAR RANK IMPROVE HUA HAI - IMMEDIATE CLAIM
       if (rankImproved) {
         canClaim = true;
         console.log(`🎯 RANK IMPROVED! Can claim immediately!`);
-      }
-      // AGAR RANK SAME HAI AUR 24 HOURS HO GAYE HAIN
-      else if (!alreadyClaimed) {
+      } else if (!alreadyClaimed) {
         canClaim = true;
       }
     }
     
-    console.log(`📊 Final Status: canClaim=${canClaim}, rankImproved=${rankImproved}`);
+    console.log(`📊 Final Status: canClaim=${canClaim}, rankImproved=${rankImproved}, alreadyClaimed=${alreadyClaimed}`);
     
     res.json({
       success: true,
@@ -321,7 +339,7 @@ const checkBonusStatus = async (req, res) => {
         isInTop3: isInTop3,
         alreadyClaimed: alreadyClaimed,
         rankImproved: rankImproved,
-        canClaim: canClaim,  // ✅ YAHI SE DIALOG SHOW HOGA
+        canClaim: canClaim,
         bonusAmount: bonusAmount,
         hoursLeft: hoursLeft > 0 ? Math.ceil(hoursLeft) : 0,
         lastBonusRank: lastBonusRank
@@ -333,7 +351,6 @@ const checkBonusStatus = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 const claimDailyBonus = async (req, res) => {
   try {
     const { uid } = req.user;
