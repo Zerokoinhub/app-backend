@@ -267,7 +267,7 @@ const checkBonusStatus = async (req, res) => {
       hoursLeft = 24 - hoursSinceLastClaim;
     }
     
-    // ✅ CHECK IF RANK IMPROVED (YEH IMPORTANT HAI!)
+    // ✅ CHECK IF RANK IMPROVED
     const lastBonusRank = user.lastBonusRank;
     const rankImproved = lastBonusRank != null && userRank < lastBonusRank;
     
@@ -278,8 +278,17 @@ const checkBonusStatus = async (req, res) => {
     else if (userRank === 2) bonusAmount = 10;
     else if (userRank === 3) bonusAmount = 5;
     
-    // ✅ CAN CLAIM IF: in top 3 AND (not already claimed OR rank improved)
-    const canClaim = isInTop3 && (!alreadyClaimed || rankImproved);
+    // ✅ IMPORTANT: Agar rank improve hua hai toh claim kar sakte ho, chahe 24 hours baki ho
+    let canClaim = false;
+    
+    if (isInTop3) {
+      if (rankImproved) {
+        canClaim = true;
+        console.log(`🎯 Rank improved from ${lastBonusRank} to ${userRank}! Can claim immediately!`);
+      } else if (!alreadyClaimed) {
+        canClaim = true;
+      }
+    }
     
     console.log(`📊 Bonus Status - User: ${user.email}, Rank: ${userRank}`);
     console.log(`   Already Claimed: ${alreadyClaimed}, Rank Improved: ${rankImproved}`);
