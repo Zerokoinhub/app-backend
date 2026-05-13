@@ -19,6 +19,33 @@ const generateInviteCode = () => {
 // ============ REAL-TIME BONUS ON POSITION CHANGE ============
 
 // Check and give bonus when user's rank changes
+const sendBonusNotification = async (user, rank, bonusAmount) => {
+  try {
+    const NotificationService = require('../services/notificationService');
+    const notificationService = new NotificationService();
+    
+    const activeTokens = user.fcmTokens?.filter(t => t.isActive && t.token) || [];
+    
+    if (activeTokens.length === 0) {
+      console.log(`⚠️ No active FCM tokens for user ${user.email}`);
+      return;
+    }
+    
+    for (const tokenInfo of activeTokens) {
+      const result = await notificationService.sendRankBonusNotification(
+        tokenInfo.token,
+        rank,
+        bonusAmount,
+        user.name || 'Miner'
+      );
+      console.log(`📱 Notification sent to ${user.email}: ${result.success}`);
+    }
+    
+    console.log(`✅ Bonus notification sent to ${user.email} for rank ${rank}`);
+  } catch (error) {
+    console.error('Failed to send bonus notification:', error);
+  }
+};
 const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
   try {
     // Get current top 3 users
