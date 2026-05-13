@@ -324,6 +324,35 @@ router.post('/upload-screenshots',
 // ============================================
 // ✅ BONUS ROUTES (NEW)
 // ============================================
+// Add this temporary endpoint in userRoutes.js
+router.get('/debug/direct-pending', verifyFirebaseToken, async (req, res) => {
+  try {
+    const { uid } = req.user;
+    
+    // Direct MongoDB query
+    const result = await User.aggregate([
+      { $match: { firebaseUid: uid } },
+      { $project: { 
+          email: 1, 
+          balance: 1,
+          pendingBonus: 1,
+          hasPendingBonus: { $cond: [{ $ifNull: ['$pendingBonus', false] }, true, false] }
+        } 
+      }
+    ]);
+    
+    console.log('🔍 DIRECT DB QUERY RESULT:', JSON.stringify(result, null, 2));
+    
+    res.json({ 
+      success: true, 
+      data: result[0],
+      raw: result
+    });
+  } catch (error) {
+    console.error('Debug error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 router.get('/bonus/status', verifyFirebaseToken, userController.checkBonusStatus);
 router.post('/daily-bonus', verifyFirebaseToken, userController.claimDailyBonus);
 
