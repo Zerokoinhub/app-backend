@@ -15,7 +15,15 @@ const generateInviteCode = () => {
   return code;
 };
 // Backend mein yeh endpoint add karo
+const getUserRank = async (firebaseUid) => {
+  const users = await User.find({})
+    .sort({ balance: -1 })
+    .select('firebaseUid')
+    .lean();
 
+  const index = users.findIndex(u => u.firebaseUid === firebaseUid);
+  return index === -1 ? null : index + 1;
+};
 const syncUserRank = async (req, res) => {
   try {
     const { userId } = req.body;
@@ -67,34 +75,41 @@ const syncUserRank = async (req, res) => {
 };
 
 
-const claimBonusFromNotification = async (req, res) => {
+
+exports.claimBonusFromNotification = async (req, res) => {
   try {
-    const user = await User.findOne({ firebaseUid: req.user.uid });
+    const { uid } = req.user;
+
+    const user = await User.findOne({ firebaseUid: uid });
 
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ success: false });
     }
 
-    if (!user.pendingBonus || user.pendingBonus.claimed) {
-      return res.status(400).json({ error: 'No bonus' });
+    console.log("📦 Pending bonus:", user.pendingBonus);
+
+    if (!user.pendingBonus || user.pendingBonus.claimed === true) {
+      return res.status(400).json({
+        success: false,
+        message: "No pending bonus to claim"
+      });
     }
 
-    const amount = user.pendingBonus.amount;
+    const bonus = user.pendingBonus.amount;
 
-    user.balance = (user.balance || 0) + amount;
+    user.balance = (user.balance || 0) + bonus;
 
     user.pendingBonus.claimed = true;
     user.pendingBonus.claimedAt = new Date();
 
-    user.markModified('pendingBonus');
+    user.lastBonusClaimTime = new Date();
 
     await user.save();
 
-    res.json({
+    return res.json({
       success: true,
-      message: 'Bonus claimed',
-      amount,
-      balance: user.balance
+      message: `+${bonus} coins added`,
+      newBalance: user.balance
     });
 
   } catch (err) {
@@ -140,60 +155,61 @@ const updateUserBalanceByAdmin = async (req, res) => {
 
 // Check and give bonus when user's rank changes
 // userController.js - Check this function
-const checkAndGiveBonusOnRankChange = async (user) => {
+
+const checkAndGiveBonusOnRankChange = async (firebaseUid) => {
   try {
-    console.log('🔍 RANK BONUS CHECK START');
+    const user = await User.findOne({ firebaseUid });
 
-    const topUsers = await User.find({})
-      .sort({ balance: -1 })
-      .limit(100) // IMPORTANT: not 10
-      .lean();
+    if (!user) return false;
 
-    const currentRank =
-      topUsers.findIndex(u => u.firebaseUid === user.firebaseUid) + 1;
+    const currentRank = await getUserRank(firebaseUid);
+    const previousRank = user.lastBonusRank || 999;
 
-    if (currentRank <= 0) {
-      console.log('❌ User not in leaderboard');
+    console.log("📊 Rank Check:", { currentRank, previousRank });
+
+    // update rank always
+    user.lastBonusRank = currentRank;
+
+    const rankImproved =
+      currentRank != null &&
+      currentRank <= 3 &&
+      currentRank < previousRank;
+
+    if (!rankImproved) {
+      await user.save();
       return false;
     }
 
-    const previousRank = user.lastBonusRank || 999;
+    const bonusAmount =
+      currentRank === 1 ? 20 :
+      currentRank === 2 ? 10 :
+      currentRank === 3 ? 5 : 0;
 
-    console.log('Rank:', { previousRank, currentRank });
-
-    const rankImproved = currentRank < previousRank;
-
-    user.lastBonusRank = currentRank;
-
-    if (rankImproved && currentRank >= 1 && currentRank <= 3) {
-      let bonusAmount = 0;
-
-      if (currentRank === 1) bonusAmount = 20;
-      else if (currentRank === 2) bonusAmount = 10;
-      else if (currentRank === 3) bonusAmount = 5;
-
-      console.log('✅ Creating pending bonus:', bonusAmount);
-
-      user.pendingBonus = {
-        amount: bonusAmount,
-        rank: currentRank,
-        claimed: false,
-        earnedAt: new Date()
-      };
-
-      user.markModified('pendingBonus');
-      user.lastBonusClaimTime = null;
-
+    if (bonusAmount <= 0) {
       await user.save();
-
-      return true;
+      return false;
     }
 
+    // ✅ CREATE PENDING BONUS (FIXED)
+    user.pendingBonus = {
+      amount: bonusAmount,
+      rank: currentRank,
+      claimed: false,
+      earnedAt: new Date()
+    };
+
+    user.markModified('pendingBonus');
+
+    user.lastBonusClaimTime = null;
+
     await user.save();
-    return false;
+
+    console.log("✅ Pending bonus created:", user.pendingBonus);
+
+    return true;
 
   } catch (err) {
-    console.error('❌ BONUS ERROR:', err);
+    console.error("❌ Bonus engine error:", err);
     return false;
   }
 };
@@ -327,119 +343,38 @@ const updateUserBalance = async (req, res) => {
 const checkBonusStatus = async (req, res) => {
   try {
     const { uid } = req.user;
-    const now = new Date();
 
     const user = await User.findOne({ firebaseUid: uid });
+
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return res.status(404).json({ success: false });
     }
 
-    // Get top 10 users for rank calculation
-    const topUsers = await User.find({})
-      .select('firebaseUid balance')
-      .sort({ balance: -1 })
-      .limit(10)
-      .lean();
+    const rank = await getUserRank(uid);
+    const pending = user.pendingBonus;
 
-    const userRank = topUsers.findIndex(u => u.firebaseUid === uid) + 1;
+    const isInTop3 = rank >= 1 && rank <= 3;
 
-    const isInTop3 = userRank >= 1 && userRank <= 3;
+    const hasPendingBonus = pending && pending.claimed === false;
 
-    const lastBonusRank = user.lastBonusRank || null;
-    const lastClaimTime = user.lastBonusClaimTime;
+    const canClaim = isInTop3 && hasPendingBonus;
 
-    // =========================
-    // 🔥 FIX 1: Proper rank improved logic
-    // =========================
-    let rankImproved = false;
-
-    if (!lastBonusRank && isInTop3) {
-      // first time entering top 3
-      rankImproved = true;
-    } else if (lastBonusRank && userRank < lastBonusRank) {
-      // actual improvement
-      rankImproved = true;
-    }
-
-    // =========================
-    // 🔥 FIX 2: DAILY BONUS LOGIC (IMPORTANT)
-    // =========================
-    let alreadyClaimed = false;
-    let hoursLeft = 0;
-
-    if (lastClaimTime) {
-      const diffHours = (now - lastClaimTime) / (1000 * 60 * 60);
-
-      if (diffHours < 24) {
-        alreadyClaimed = true;
-        hoursLeft = 24 - diffHours;
-      }
-    }
-
-    // =========================
-    // 🔥 FIX 3: BONUS AMOUNT
-    // =========================
-    let bonusAmount = 0;
-    if (userRank === 1) bonusAmount = 20;
-    else if (userRank === 2) bonusAmount = 10;
-    else if (userRank === 3) bonusAmount = 5;
-
-    // =========================
-    // 🔥 FIX 4: CRITICAL canClaim LOGIC
-    // =========================
-    let canClaim = false;
-    let hasPendingBonus = false;
-
-    if (isInTop3) {
-      // CASE 1: rank improved → always allow popup
-      if (rankImproved) {
-        canClaim = true;
-      }
-      // CASE 2: daily bonus cycle
-      else if (!alreadyClaimed) {
-        canClaim = true;
-      }
-    }
-
-    // =========================
-    // 🔥 FIX 5: PENDING BONUS CHECK (IMPORTANT FOR FLUTTER DIALOG)
-    // =========================
-    if (user.pendingBonus && !user.pendingBonus.claimed) {
-      hasPendingBonus = true;
-      canClaim = true; // FORCE dialog show
-      bonusAmount = user.pendingBonus.amount;
-    }
-
-    // =========================
-    // 🔥 FIX 6: RESPONSE (CLEAN + RELIABLE)
-    // =========================
     return res.json({
       success: true,
       data: {
-        rank: userRank,
+        rank,
         isInTop3,
-        alreadyClaimed,
-        rankImproved,
+        hasPendingBonus,
         canClaim,
-        bonusAmount,
-        hoursLeft: hoursLeft > 0 ? Math.ceil(hoursLeft) : 0,
-        lastBonusRank,
-        hasPendingBonus
+        bonusAmount: pending?.amount || 0,
+        rankImproved: false
       }
     });
 
-  } catch (error) {
-    console.error('❌ checkBonusStatus error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 };
-
 const claimDailyBonus = async (req, res) => {
 
   try {
@@ -993,28 +928,28 @@ exports.updateUserBalance = async (req, res) => {
     const { uid } = req.user;
     const { amount } = req.body;
 
-    if (typeof amount !== 'number') {
-      return res.status(400).json({ message: 'Amount must be a number' });
+    if (typeof amount !== "number") {
+      return res.status(400).json({ message: "Amount must be number" });
     }
 
     const user = await User.findOne({ firebaseUid: uid });
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     user.balance = (user.balance || 0) + amount;
     await user.save();
 
-    res.status(200).json({
-      message: 'User balance updated successfully',
-      newBalance: user.balance,
+    // 🔥 IMPORTANT: pass ONLY UID
+    await checkAndGiveBonusOnRankChange(uid);
+
+    res.json({
+      success: true,
+      newBalance: user.balance
     });
-  } catch (error) {
-    console.error('Update user balance error:', error.message);
-    res.status(500).json({ message: 'Error updating user balance', error: error.message });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 };
-
 exports.updateFCMToken = async (req, res) => {
   try {
     const { uid } = req.user;
