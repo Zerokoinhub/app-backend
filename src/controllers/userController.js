@@ -15,80 +15,92 @@ const generateInviteCode = () => {
   return code;
 };
 // Backend mein yeh endpoint add karo
+
 const syncUserRank = async (req, res) => {
   try {
     const { userId } = req.body;
+
     const user = await User.findById(userId);
-    
-    // Get current rank
-    const topUsers = await User.find({}).sort({ balance: -1 }).limit(10).lean();
-    const currentRank = topUsers.findIndex(u => u._id.toString() === userId) + 1;
-    const oldRank = user.lastBonusRank || currentRank;
-    
-    // Update lastBonusRank
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const topUsers = await User.find({})
+      .sort({ balance: -1 })
+      .limit(100);
+
+    const currentRank =
+      topUsers.findIndex(u => u._id.toString() === userId.toString()) + 1;
+
+    const oldRank = user.lastBonusRank || 999;
+
     user.lastBonusRank = currentRank;
-    
-    // Check if rank improved
-    if (currentRank < oldRank && currentRank <= 3) {
-      const bonusAmount = currentRank === 1 ? 20 : currentRank === 2 ? 10 : 5;
+
+    if (currentRank > 0 && currentRank < oldRank && currentRank <= 3) {
+      const bonus =
+        currentRank === 1 ? 20 :
+        currentRank === 2 ? 10 :
+        5;
+
       user.pendingBonus = {
-        amount: bonusAmount,
+        amount: bonus,
         rank: currentRank,
         claimed: false,
         earnedAt: new Date()
       };
-      user.lastBonusClaimTime = null;
+
+      user.markModified('pendingBonus');
       await user.save();
-      
-      return res.json({ 
-        success: true, 
-        rankImproved: true, 
+
+      return res.json({
+        success: true,
         bonusCreated: true,
-        bonusAmount 
+        bonus
       });
     }
-    
+
     await user.save();
-    res.json({ success: true, rankImproved: false });
-    
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-const sendBonusNotification = async (user, rank, bonusAmount) => {
-  try {
-    console.log(`📱 Attempting to send notification to ${user.email}`);
-    console.log(`   FCM Tokens: ${JSON.stringify(user.fcmTokens)}`);
-    
-    const activeTokens = user.fcmTokens?.filter(t => t.isActive && t.token) || [];
-    
-    console.log(`   Active tokens count: ${activeTokens.length}`);
-    
-    if (activeTokens.length === 0) {
-      console.log(`⚠️ No active FCM tokens for user ${user.email}`);
-      return;
-    }
-    
-    const NotificationService = require('../services/notificationService');
-    const notificationService = new NotificationService();
-    
-    for (const tokenInfo of activeTokens) {
-      console.log(`📱 Sending to token: ${tokenInfo.token.substring(0, 20)}...`);
-      const result = await notificationService.sendRankBonusNotificationWithActions(
-        tokenInfo.token,
-        rank,
-        bonusAmount,
-        user.name || 'Miner'
-      );
-      console.log(`📱 Result: ${JSON.stringify(result)}`);
-    }
-    
-    console.log(`✅ Bonus notification sent to ${user.email} for rank ${rank}`);
-  } catch (error) {
-    console.error('Failed to send bonus notification:', error);
+
+    res.json({ success: true, bonusCreated: false });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 };
 
+
+const claimBonusFromNotification = async (req, res) => {
+  try {
+    const user = await User.findOne({ firebaseUid: req.user.uid });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (!user.pendingBonus || user.pendingBonus.claimed) {
+      return res.status(400).json({ error: 'No bonus' });
+    }
+
+    const amount = user.pendingBonus.amount;
+
+    user.balance = (user.balance || 0) + amount;
+
+    user.pendingBonus.claimed = true;
+    user.pendingBonus.claimedAt = new Date();
+
+    user.markModified('pendingBonus');
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Bonus claimed',
+      amount,
+      balance: user.balance
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
 // Admin panel - Update user balance function
 
 
@@ -130,68 +142,61 @@ const updateUserBalanceByAdmin = async (req, res) => {
 // userController.js - Check this function
 const checkAndGiveBonusOnRankChange = async (user) => {
   try {
-    console.log('🔍 ===== RANK BONUS CHECK START =====');
-    
-    // Get current rank
+    console.log('🔍 RANK BONUS CHECK START');
+
     const topUsers = await User.find({})
       .sort({ balance: -1 })
-      .limit(10)
+      .limit(100) // IMPORTANT: not 10
       .lean();
 
-    const currentRank = topUsers.findIndex(u => u.firebaseUid === user.firebaseUid) + 1;
-    const previousRank = user.lastBonusRank;
+    const currentRank =
+      topUsers.findIndex(u => u.firebaseUid === user.firebaseUid) + 1;
 
-    console.log(`   User: ${user.email}`);
-    console.log(`   Previous Rank: ${previousRank}`);
-    console.log(`   Current Rank: ${currentRank}`);
+    if (currentRank <= 0) {
+      console.log('❌ User not in leaderboard');
+      return false;
+    }
 
-    // ✅ Update lastBonusRank
+    const previousRank = user.lastBonusRank || 999;
+
+    console.log('Rank:', { previousRank, currentRank });
+
+    const rankImproved = currentRank < previousRank;
+
     user.lastBonusRank = currentRank;
 
-    // ✅ Check if rank improved
-    const rankImproved = (previousRank == null && currentRank <= 3) || 
-                         (previousRank != null && currentRank < previousRank);
-
-    console.log(`   Rank Improved: ${rankImproved}`);
-
     if (rankImproved && currentRank >= 1 && currentRank <= 3) {
-      const bonusAmount = currentRank === 1 ? 20 : currentRank === 2 ? 10 : 5;
-      
-      console.log(`✅ CREATING PENDING BONUS! +${bonusAmount} coins for rank ${currentRank}`);
-      
-      // ✅ Set pending bonus
+      let bonusAmount = 0;
+
+      if (currentRank === 1) bonusAmount = 20;
+      else if (currentRank === 2) bonusAmount = 10;
+      else if (currentRank === 3) bonusAmount = 5;
+
+      console.log('✅ Creating pending bonus:', bonusAmount);
+
       user.pendingBonus = {
         amount: bonusAmount,
         rank: currentRank,
         claimed: false,
         earnedAt: new Date()
       };
-      
-      // ✅ IMPORTANT: Mark as modified for nested object
+
       user.markModified('pendingBonus');
-      
       user.lastBonusClaimTime = null;
-      
+
       await user.save();
-      
-      console.log(`✅ Pending bonus saved!`);
-      
-      // Send notification
-      await sendBonusNotification(user, currentRank, bonusAmount);
-      
+
       return true;
     }
-    
+
     await user.save();
-    console.log(`❌ No bonus created - Rank: ${currentRank}, Improved: ${rankImproved}`);
     return false;
-    
-  } catch (error) {
-    console.error('❌ Rank bonus error:', error);
+
+  } catch (err) {
+    console.error('❌ BONUS ERROR:', err);
     return false;
   }
 };
-
 const claimBonusFromNotification = async (req, res) => {
   try {
     const { uid } = req.user;
