@@ -357,12 +357,10 @@ const updateUserBalance = async (req, res) => {
 // Admin panel mein yeh function use karo
 const checkBonusStatus = async (req, res) => {
   try {
-
     const { uid } = req.user;
     const now = new Date();
 
     const user = await User.findOne({ firebaseUid: uid });
-
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -370,107 +368,108 @@ const checkBonusStatus = async (req, res) => {
       });
     }
 
-    // Current leaderboard
+    // Get top 10 users for rank calculation
     const topUsers = await User.find({})
       .select('firebaseUid balance')
       .sort({ balance: -1 })
       .limit(10)
       .lean();
 
-    const currentRank =
-      topUsers.findIndex(u => u.firebaseUid === uid) + 1;
+    const userRank = topUsers.findIndex(u => u.firebaseUid === uid) + 1;
 
-    const isInTop3 =
-      currentRank >= 1 && currentRank <= 3;
+    const isInTop3 = userRank >= 1 && userRank <= 3;
 
-    // BONUS AMOUNT
-    let bonusAmount = 0;
+    const lastBonusRank = user.lastBonusRank || null;
+    const lastClaimTime = user.lastBonusClaimTime;
 
-    if (currentRank === 1) bonusAmount = 20;
-    else if (currentRank === 2) bonusAmount = 10;
-    else if (currentRank === 3) bonusAmount = 5;
+    // =========================
+    // 🔥 FIX 1: Proper rank improved logic
+    // =========================
+    let rankImproved = false;
 
-    // Pending bonus
-    if (user.pendingBonus && !user.pendingBonus.claimed) {
-
-      return res.json({
-        success: true,
-        data: {
-          rank: currentRank,
-          isInTop3,
-          alreadyClaimed: false,
-          rankImproved: true,
-          canClaim: true,
-          bonusAmount: user.pendingBonus.amount,
-          hoursLeft: 0,
-          hasPendingBonus: true,
-          lastBonusRank: user.lastBonusRank
-        }
-      });
+    if (!lastBonusRank && isInTop3) {
+      // first time entering top 3
+      rankImproved = true;
+    } else if (lastBonusRank && userRank < lastBonusRank) {
+      // actual improvement
+      rankImproved = true;
     }
 
-    // Not in top 3
-    if (!isInTop3) {
-
-      return res.json({
-        success: true,
-        data: {
-          rank: currentRank,
-          isInTop3: false,
-          alreadyClaimed: false,
-          rankImproved: false,
-          canClaim: false,
-          bonusAmount: 0,
-          hoursLeft: 0,
-          lastBonusRank: user.lastBonusRank
-        }
-      });
-    }
-
-    // Daily timer check
+    // =========================
+    // 🔥 FIX 2: DAILY BONUS LOGIC (IMPORTANT)
+    // =========================
     let alreadyClaimed = false;
     let hoursLeft = 0;
 
-    if (user.lastBonusClaimTime) {
+    if (lastClaimTime) {
+      const diffHours = (now - lastClaimTime) / (1000 * 60 * 60);
 
-      const diff =
-        now - new Date(user.lastBonusClaimTime);
-
-      const hours =
-        diff / (1000 * 60 * 60);
-
-      if (hours < 24) {
+      if (diffHours < 24) {
         alreadyClaimed = true;
-        hoursLeft = Math.ceil(24 - hours);
+        hoursLeft = 24 - diffHours;
       }
     }
 
-    res.json({
+    // =========================
+    // 🔥 FIX 3: BONUS AMOUNT
+    // =========================
+    let bonusAmount = 0;
+    if (userRank === 1) bonusAmount = 20;
+    else if (userRank === 2) bonusAmount = 10;
+    else if (userRank === 3) bonusAmount = 5;
+
+    // =========================
+    // 🔥 FIX 4: CRITICAL canClaim LOGIC
+    // =========================
+    let canClaim = false;
+    let hasPendingBonus = false;
+
+    if (isInTop3) {
+      // CASE 1: rank improved → always allow popup
+      if (rankImproved) {
+        canClaim = true;
+      }
+      // CASE 2: daily bonus cycle
+      else if (!alreadyClaimed) {
+        canClaim = true;
+      }
+    }
+
+    // =========================
+    // 🔥 FIX 5: PENDING BONUS CHECK (IMPORTANT FOR FLUTTER DIALOG)
+    // =========================
+    if (user.pendingBonus && !user.pendingBonus.claimed) {
+      hasPendingBonus = true;
+      canClaim = true; // FORCE dialog show
+      bonusAmount = user.pendingBonus.amount;
+    }
+
+    // =========================
+    // 🔥 FIX 6: RESPONSE (CLEAN + RELIABLE)
+    // =========================
+    return res.json({
       success: true,
       data: {
-        rank: currentRank,
-        isInTop3: true,
+        rank: userRank,
+        isInTop3,
         alreadyClaimed,
-        rankImproved: false,
-        canClaim: !alreadyClaimed,
+        rankImproved,
+        canClaim,
         bonusAmount,
-        hoursLeft,
-        hasPendingBonus: false,
-        lastBonusRank: user.lastBonusRank
+        hoursLeft: hoursLeft > 0 ? Math.ceil(hoursLeft) : 0,
+        lastBonusRank,
+        hasPendingBonus
       }
     });
 
   } catch (error) {
-
-    console.error('❌ Error:', error);
-
+    console.error('❌ checkBonusStatus error:', error);
     res.status(500).json({
       success: false,
       error: error.message
     });
   }
 };
-
 
 const claimDailyBonus = async (req, res) => {
 
