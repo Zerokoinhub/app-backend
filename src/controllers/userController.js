@@ -99,73 +99,54 @@ const updateUserBalanceByAdmin = async (req, res) => {
       return res.status(404).json({ success: false });
     }
     
-    const oldBalance = user.balance;
-    
-    // ✅ GET OLD RANK BEFORE UPDATE
+    // ✅ Save old rank FIRST
     const oldTopUsers = await User.find({}).sort({ balance: -1 }).limit(10).lean();
     const oldRank = oldTopUsers.findIndex(u => u._id.toString() === userId) + 1;
+    const previousBonusRank = user.lastBonusRank; // Save before update
     
     // Update balance
     user.balance = newBalance;
     await user.save();
     
-    // ✅ GET NEW RANK AFTER UPDATE
+    // Get new rank
     const newTopUsers = await User.find({}).sort({ balance: -1 }).limit(10).lean();
     const newRank = newTopUsers.findIndex(u => u._id.toString() === userId) + 1;
     
-    console.log(`📊 Admin update - User: ${user.email}`);
-    console.log(`   Old Rank: ${oldRank}, New Rank: ${newRank}`);
-    console.log(`   Current lastBonusRank: ${user.lastBonusRank}`);
-    
-    // ✅ CRITICAL FIX: Always update lastBonusRank to current rank
-    // This ensures lastBonusRank always reflects the user's last known rank
+    // ✅ Update lastBonusRank to current rank
     user.lastBonusRank = newRank;
     
-    // ✅ CHECK IF RANK IMPROVED (new rank is BETTER than old rank)
-    // Improvement means: newRank < oldRank (e.g., 3→2 or 2→1)
-   const rankImproved = (user.lastBonusRank == null && userRank <= 3) || 
-                     (user.lastBonusRank != null && userRank < user.lastBonusRank);
+    // ✅ Correct rank improvement check
+    const rankImproved = (previousBonusRank == null && newRank <= 3) ||
+                         (previousBonusRank != null && newRank < previousBonusRank);
     
-    if (rankImproved) {
+    if (rankImproved && newRank >= 1 && newRank <= 3) {
       const bonusAmount = newRank === 1 ? 20 : newRank === 2 ? 10 : 5;
       
-      console.log(`🎉 RANK IMPROVED! Creating pending bonus...`);
-      
-      // ✅ CREATE PENDING BONUS
       user.pendingBonus = {
         amount: bonusAmount,
         rank: newRank,
         claimed: false,
         earnedAt: new Date()
       };
-      
-      // ✅ RESET TIMER
       user.lastBonusClaimTime = null;
-      
       await user.save();
       
-      console.log(`✅ Pending bonus created for rank ${newRank}`);
       await sendBonusNotification(user, newRank, bonusAmount);
     } else {
-      // ✅ Even if no improvement, still save the updated lastBonusRank
       await user.save();
-      console.log(`📊 Updated lastBonusRank to ${newRank} (no improvement)`);
     }
     
     res.json({ 
       success: true, 
-      message: 'Balance updated successfully',
       rankImproved: rankImproved,
       newRank: newRank,
-      oldRank: oldRank,
-      lastBonusRank: user.lastBonusRank
+      oldRank: oldRank
     });
     
   } catch (error) {
-    console.error('Error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
-};// userController.js - Backend
+};
 // Check bonus status for current user
 // ============ REAL-TIME BONUS ON POSITION CHANGE ============
 
@@ -173,80 +154,37 @@ const updateUserBalanceByAdmin = async (req, res) => {
 // userController.js - Check this function
 const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
   try {
-    // Get current rank
     const topUsers = await User.find({}).sort({ balance: -1 }).limit(3).lean();
     const userRank = topUsers.findIndex(u => u.firebaseUid === user.firebaseUid) + 1;
     
-    console.log(`🔍 Rank Check - User: ${user.email}`);
-    console.log(`   Current Rank: ${userRank}`);
-    console.log(`   Last Bonus Rank: ${user.lastBonusRank}`);
-    console.log(`   Last Claim Time: ${user.lastBonusClaimTime}`);
+    const previousBonusRank = user.lastBonusRank;
+    const rankImproved = (previousBonusRank == null && userRank <= 3) ||
+                         (previousBonusRank != null && userRank < previousBonusRank);
     
-    // ✅ KYA RANK IMPROVE HUA HAI?
-    const rankImproved = user.lastBonusRank != null && userRank < user.lastBonusRank;
-    
-    // ✅ AGAR RANK TOP 3 MEIN HAI
-    if (userRank >= 1 && userRank <= 3) {
+    if (userRank >= 1 && userRank <= 3 && rankImproved) {
+      const bonusAmount = userRank === 1 ? 20 : userRank === 2 ? 10 : 5;
       
-      // ✅ JAB BHI RANK IMPROVE HO - PURANA TIMER RESET KARO!
-      if (rankImproved) {
-        let bonusAmount = userRank === 1 ? 20 : userRank === 2 ? 10 : 5;
-        
-        console.log(`🎉 RANK IMPROVED! Creating pending bonus for Rank ${userRank}, Amount ${bonusAmount}`);
-        
-        // ✅ IMPORTANT: Purana timer reset karo
-        user.lastBonusClaimTime = null;  // Reset claim time
-        user.lastBonusRank = null;        // Reset last rank (purana hatao)
-        user.bonusTimer = {
-          lastClaimTime: null,
-          nextClaimTime: null,
-          autoBonusGiven: false,
-          pendingBonus: false
-        };
-        
-        // Create pending bonus immediately
-        user.pendingBonus = {
-          amount: bonusAmount,
-          rank: userRank,
-          claimed: false,
-          earnedAt: new Date()
-        };
-        
-        await user.save();
-        
-        // Send notification
-        await sendBonusNotification(user, userRank, bonusAmount);
-        
-        return true;
-      }
-      // ✅ AGAR RANK SAME HAI AUR 24 HOURS HO GAYE HAIN
-      else if (!user.lastBonusClaimTime || (new Date() - user.lastBonusClaimTime) >= 24 * 60 * 60 * 1000) {
-        let bonusAmount = userRank === 1 ? 20 : userRank === 2 ? 10 : 5;
-        
-        console.log(`🎉 Time-based bonus for Rank ${userRank}, Amount ${bonusAmount}`);
-        
-        user.pendingBonus = {
-          amount: bonusAmount,
-          rank: userRank,
-          claimed: false,
-          earnedAt: new Date()
-        };
-        
-        await user.save();
-        await sendBonusNotification(user, userRank, bonusAmount);
-        
-        return true;
-      }
+      user.lastBonusClaimTime = null;
+      user.lastBonusRank = userRank; // ✅ Don't set to null!
+      
+      user.pendingBonus = {
+        amount: bonusAmount,
+        rank: userRank,
+        claimed: false,
+        earnedAt: new Date()
+      };
+      
+      await user.save();
+      await sendBonusNotification(user, userRank, bonusAmount);
+      return true;
     }
     
-    console.log(`❌ No bonus created - Rank: ${userRank}, Improved: ${rankImproved}`);
     return false;
-    
   } catch (error) {
-    console.error('Error checking rank bonus:', error);
+    console.error('Error:', error);
     return false;
   }
-};// userController.js - Replace your claimBonusFromNotification with this
+};
 const claimBonusFromNotification = async (req, res) => {
   try {
     const { uid } = req.user;
