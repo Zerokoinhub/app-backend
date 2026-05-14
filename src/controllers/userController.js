@@ -129,44 +129,57 @@ const claimBonusFromNotification = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    if (!user.pendingBonus || user.pendingBonus.claimed) {
+    const bonus = user.pendingBonus;
+
+    if (!bonus || bonus.claimed) {
       return res.status(400).json({
         success: false,
-        message: "No pending bonus"
+        message: "No claimable bonus"
       });
     }
 
-    const bonus = user.pendingBonus.amount;
-    const rank = user.pendingBonus.rank;
+    const isExpired =
+      bonus.earnedAt &&
+      (Date.now() - new Date(bonus.earnedAt).getTime()) > 24 * 60 * 60 * 1000;
 
-    user.balance = (user.balance || 0) + bonus;
+    if (isExpired) {
+      user.pendingBonus = null;
+      await user.save();
 
+      return res.status(400).json({
+        success: false,
+        message: "Bonus expired"
+      });
+    }
+
+    // ✅ Add balance
+    user.balance = (user.balance || 0) + bonus.amount;
+
+    // ✅ mark claimed
     user.pendingBonus.claimed = true;
     user.pendingBonus.claimedAt = new Date();
+
     user.lastBonusClaimTime = new Date();
-    user.lastBonusRank = rank;
-    user.lastBonusAmount = bonus;
+    user.lastBonusAmount = bonus.amount;
+    user.lastBonusRank = bonus.rank;
 
     await user.save();
 
-    console.log(`✅ Bonus claimed: +${bonus} coins to ${user.email}, new balance: ${user.balance}`);
-
-    return res.json({
+    res.json({
       success: true,
-      message: `+${bonus} coins added`,
+      message: `+${bonus.amount} coins added`,
       data: {
-        bonusAmount: bonus,
-        rank: rank,
+        bonusAmount: bonus.amount,
+        rank: bonus.rank,
         newBalance: user.balance
       }
     });
 
   } catch (err) {
-    console.error('Claim error:', err);
-    res.status(500).json({ error: err.message });
+    console.error("claimBonus error:", err);
+    res.status(500).json({ success: false, error: err.message });
   }
 };
-
 const cancelBonusFromNotification = async (req, res) => {
   try {
     const { uid } = req.user;
@@ -210,15 +223,26 @@ const checkBonusStatus = async (req, res) => {
 
     const user = await User.findOne({ firebaseUid: uid });
     if (!user) {
-      return res.status(404).json({ success: false });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
     const rank = await getUserRank(uid);
-    const pending = user.pendingBonus;
+
+    const pendingBonus = user.pendingBonus;
 
     const isInTop3 = rank >= 1 && rank <= 3;
-    const hasPendingBonus = pending && pending.claimed === false;
-    const canClaim = isInTop3 && hasPendingBonus;
+
+    const hasPendingBonus =
+      pendingBonus &&
+      pendingBonus.amount > 0 &&
+      pendingBonus.claimed === false;
+
+    const isExpired =
+      pendingBonus?.earnedAt
+        ? (Date.now() - new Date(pendingBonus.earnedAt).getTime()) > 24 * 60 * 60 * 1000
+        : false;
+
+    const canClaim = isInTop3 && hasPendingBonus && !isExpired;
 
     res.json({
       success: true,
@@ -227,20 +251,19 @@ const checkBonusStatus = async (req, res) => {
         isInTop3,
         hasPendingBonus,
         canClaim,
-        bonusAmount: pending?.amount || 0,
-        alreadyClaimed:  user.pendingBonus?.claimed === true,
-        hoursLeft: 0,
-        lastBonusRank: user.lastBonusRank,
-        rankImproved: hasPendingBonus
+        isExpired,
+        bonusAmount: pendingBonus?.amount || 0,
+        alreadyClaimed: pendingBonus?.claimed === true,
+        lastBonusRank: user.lastBonusRank || null,
+        earnedAt: pendingBonus?.earnedAt || null
       }
     });
 
   } catch (err) {
-    console.error('checkBonusStatus error:', err);
-    res.status(500).json({ error: err.message });
+    console.error("checkBonusStatus error:", err);
+    res.status(500).json({ success: false, error: err.message });
   }
 };
-
 /* =========================
    💰 UPDATE BALANCE (FIXED)
 ========================= */
