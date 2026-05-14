@@ -54,7 +54,6 @@ const updateUserBalanceByAdmin = async (req, res) => {
   try {
     const { userId, newBalance } = req.body;
     
-    // Get user
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ success: false });
@@ -76,14 +75,22 @@ const updateUserBalanceByAdmin = async (req, res) => {
     
     console.log(`📊 Admin update - User: ${user.email}`);
     console.log(`   Old Rank: ${oldRank}, New Rank: ${newRank}`);
+    console.log(`   Current lastBonusRank: ${user.lastBonusRank}`);
     
-    // ✅ CHECK IF RANK IMPROVED
-    if (newRank < oldRank && newRank >= 1 && newRank <= 3) {
+    // ✅ CRITICAL FIX: Always update lastBonusRank to current rank
+    // This ensures lastBonusRank always reflects the user's last known rank
+    user.lastBonusRank = newRank;
+    
+    // ✅ CHECK IF RANK IMPROVED (new rank is BETTER than old rank)
+    // Improvement means: newRank < oldRank (e.g., 3→2 or 2→1)
+    const rankImproved = newRank < oldRank && newRank >= 1 && newRank <= 3;
+    
+    if (rankImproved) {
       const bonusAmount = newRank === 1 ? 20 : newRank === 2 ? 10 : 5;
       
       console.log(`🎉 RANK IMPROVED! Creating pending bonus...`);
       
-      // ✅ CREATE PENDING BONUS AUTOMATICALLY
+      // ✅ CREATE PENDING BONUS
       user.pendingBonus = {
         amount: bonusAmount,
         rank: newRank,
@@ -97,25 +104,27 @@ const updateUserBalanceByAdmin = async (req, res) => {
       await user.save();
       
       console.log(`✅ Pending bonus created for rank ${newRank}`);
-      
-      // ✅ OPTIONAL: Send push notification
       await sendBonusNotification(user, newRank, bonusAmount);
+    } else {
+      // ✅ Even if no improvement, still save the updated lastBonusRank
+      await user.save();
+      console.log(`📊 Updated lastBonusRank to ${newRank} (no improvement)`);
     }
     
     res.json({ 
       success: true, 
       message: 'Balance updated successfully',
-      rankImproved: newRank < oldRank,
+      rankImproved: rankImproved,
       newRank: newRank,
-      oldRank: oldRank
+      oldRank: oldRank,
+      lastBonusRank: user.lastBonusRank
     });
     
   } catch (error) {
     console.error('Error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
-};
-// userController.js - Backend
+};// userController.js - Backend
 // Check bonus status for current user
 // ============ REAL-TIME BONUS ON POSITION CHANGE ============
 
