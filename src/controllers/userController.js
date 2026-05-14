@@ -1486,3 +1486,4 @@ exports.claimBonusFromNotification = claimBonusFromNotification;
 exports.cancelBonusFromNotification = cancelBonusFromNotification; 
 // userController.js - Sabse end mein add karein
 exports.updateUserBalanceByAdmin = updateUserBalanceByAdmin;
+exports.syncUserRank = syncUserRank;
