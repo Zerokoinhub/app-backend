@@ -14,6 +14,41 @@ const generateInviteCode = () => {
   }
   return code;
 };
+
+const sendBonusNotification = async (user, rank, bonusAmount) => {
+  try {
+    console.log(`📱 Attempting to send notification to ${user.email}`);
+    console.log(`   FCM Tokens: ${JSON.stringify(user.fcmTokens)}`);
+    
+    const activeTokens = user.fcmTokens?.filter(t => t.isActive && t.token) || [];
+    
+    console.log(`   Active tokens count: ${activeTokens.length}`);
+    
+    if (activeTokens.length === 0) {
+      console.log(`⚠️ No active FCM tokens for user ${user.email}`);
+      return;
+    }
+    
+    const NotificationService = require('../services/notificationService');
+    const notificationService = new NotificationService();
+    
+    for (const tokenInfo of activeTokens) {
+      console.log(`📱 Sending to token: ${tokenInfo.token.substring(0, 20)}...`);
+      const result = await notificationService.sendRankBonusNotificationWithActions(
+        tokenInfo.token,
+        rank,
+        bonusAmount,
+        user.name || 'Miner'
+      );
+      console.log(`📱 Result: ${JSON.stringify(result)}`);
+    }
+    
+    console.log(`✅ Bonus notification sent to ${user.email} for rank ${rank}`);
+  } catch (error) {
+    console.error('Failed to send bonus notification:', error);
+  }
+};
+
 // Admin panel - Update user balance function
 const updateUserBalanceByAdmin = async (req, res) => {
   try {
@@ -85,39 +120,6 @@ const updateUserBalanceByAdmin = async (req, res) => {
 // ============ REAL-TIME BONUS ON POSITION CHANGE ============
 
 // Check and give bonus when user's rank changes
-const sendBonusNotification = async (user, rank, bonusAmount) => {
-  try {
-    console.log(`📱 Attempting to send notification to ${user.email}`);
-    console.log(`   FCM Tokens: ${JSON.stringify(user.fcmTokens)}`);
-    
-    const activeTokens = user.fcmTokens?.filter(t => t.isActive && t.token) || [];
-    
-    console.log(`   Active tokens count: ${activeTokens.length}`);
-    
-    if (activeTokens.length === 0) {
-      console.log(`⚠️ No active FCM tokens for user ${user.email}`);
-      return;
-    }
-    
-    const NotificationService = require('../services/notificationService');
-    const notificationService = new NotificationService();
-    
-    for (const tokenInfo of activeTokens) {
-      console.log(`📱 Sending to token: ${tokenInfo.token.substring(0, 20)}...`);
-      const result = await notificationService.sendRankBonusNotificationWithActions(
-        tokenInfo.token,
-        rank,
-        bonusAmount,
-        user.name || 'Miner'
-      );
-      console.log(`📱 Result: ${JSON.stringify(result)}`);
-    }
-    
-    console.log(`✅ Bonus notification sent to ${user.email} for rank ${rank}`);
-  } catch (error) {
-    console.error('Failed to send bonus notification:', error);
-  }
-};
 // userController.js - Check this function
 const checkAndGiveBonusOnRankChange = async (user, oldBalance, newBalance) => {
   try {
