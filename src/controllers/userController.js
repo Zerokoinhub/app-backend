@@ -100,7 +100,7 @@ const checkAndGiveBonusOnRankChange = async (firebaseUid) => {
       claimed: false,
       earnedAt: new Date()
     };
-
+user.lastBonusRank = currentRank;
     user.markModified('pendingBonus');
     user.lastBonusClaimTime = null;
 
