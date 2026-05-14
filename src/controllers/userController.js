@@ -123,7 +123,8 @@ const updateUserBalanceByAdmin = async (req, res) => {
     
     // ✅ CHECK IF RANK IMPROVED (new rank is BETTER than old rank)
     // Improvement means: newRank < oldRank (e.g., 3→2 or 2→1)
-    const rankImproved = newRank < oldRank && newRank >= 1 && newRank <= 3;
+   const rankImproved = (user.lastBonusRank == null && userRank <= 3) || 
+                     (user.lastBonusRank != null && userRank < user.lastBonusRank);
     
     if (rankImproved) {
       const bonusAmount = newRank === 1 ? 20 : newRank === 2 ? 10 : 5;
