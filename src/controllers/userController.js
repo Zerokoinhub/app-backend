@@ -14,7 +14,47 @@ const generateInviteCode = () => {
   }
   return code;
 };
-
+// Backend mein yeh endpoint add karo
+const syncUserRank = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const user = await User.findById(userId);
+    
+    // Get current rank
+    const topUsers = await User.find({}).sort({ balance: -1 }).limit(10).lean();
+    const currentRank = topUsers.findIndex(u => u._id.toString() === userId) + 1;
+    const oldRank = user.lastBonusRank || currentRank;
+    
+    // Update lastBonusRank
+    user.lastBonusRank = currentRank;
+    
+    // Check if rank improved
+    if (currentRank < oldRank && currentRank <= 3) {
+      const bonusAmount = currentRank === 1 ? 20 : currentRank === 2 ? 10 : 5;
+      user.pendingBonus = {
+        amount: bonusAmount,
+        rank: currentRank,
+        claimed: false,
+        earnedAt: new Date()
+      };
+      user.lastBonusClaimTime = null;
+      await user.save();
+      
+      return res.json({ 
+        success: true, 
+        rankImproved: true, 
+        bonusCreated: true,
+        bonusAmount 
+      });
+    }
+    
+    await user.save();
+    res.json({ success: true, rankImproved: false });
+    
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
 const sendBonusNotification = async (user, rank, bonusAmount) => {
   try {
     console.log(`📱 Attempting to send notification to ${user.email}`);
