@@ -172,10 +172,12 @@ const updateUserBalanceByAdmin = async (req, res) => {
 
 // Check and give bonus when user's rank changes
 // userController.js - Check this function
-
 const checkAndGiveBonusOnRankChange = async (user) => {
   try {
-    // Get latest top 10
+    console.log('🔍 ===== checkAndGiveBonusOnRankChange START =====');
+    console.log(`   User: ${user.email}`);
+    console.log(`   Current lastBonusRank: ${user.lastBonusRank}`);
+    
     const topUsers = await User.find({})
       .sort({ balance: -1 })
       .limit(10)
@@ -184,54 +186,45 @@ const checkAndGiveBonusOnRankChange = async (user) => {
     const currentRank = topUsers.findIndex(u => u.firebaseUid === user.firebaseUid) + 1;
     const previousRank = user.lastBonusRank || 999;
 
-    console.log(`📊 Rank Change: ${previousRank} -> ${currentRank}`);
+    console.log(`   previousRank: ${previousRank}, currentRank: ${currentRank}`);
+    console.log(`   Condition: ${currentRank} < ${previousRank} = ${currentRank < previousRank}`);
+    console.log(`   Is in top 3: ${currentRank >= 1 && currentRank <= 3}`);
 
-    // ✅ ALWAYS update lastBonusRank
     user.lastBonusRank = currentRank;
 
-    // ✅ Only top 3 eligible
     if (currentRank >= 1 && currentRank <= 3) {
-
-      // ✅ Rank improved OR first time in top 3
       if (currentRank < previousRank || previousRank === 999) {
-
-        const bonusAmount = currentRank === 1 ? 20 :
-                           currentRank === 2 ? 10 : 5;
-
-        // ✅ CREATE PENDING BONUS - YAHI MISSING THA!
+        const bonusAmount = currentRank === 1 ? 20 : currentRank === 2 ? 10 : 5;
+        
+        console.log(`✅ Creating pending bonus for rank ${currentRank}, amount ${bonusAmount}`);
+        
         user.pendingBonus = {
           amount: bonusAmount,
           rank: currentRank,
           claimed: false,
           earnedAt: new Date()
         };
-
         user.lastBonusClaimTime = null;
-
         await user.save();
-
-        console.log(`✅ Pending bonus created: +${bonusAmount} for rank ${currentRank}`);
-
-        // Send notification
+        
+        console.log(`✅ Pending bonus saved!`);
         await sendBonusNotification(user, currentRank, bonusAmount);
-
         return true;
+      } else {
+        console.log(`❌ No bonus - condition failed: ${currentRank} < ${previousRank} is false`);
       }
-
-      console.log(`ℹ️ Rank same or downgraded, no bonus`);
-      await user.save();
-      return false;
+    } else {
+      console.log(`❌ User not in top 3`);
     }
-
-    console.log(`❌ User outside top 3`);
+    
     await user.save();
     return false;
-
   } catch (error) {
     console.error('❌ Rank bonus error:', error);
     return false;
   }
 };
+
 const claimBonusFromNotification = async (req, res) => {
   try {
     const { uid } = req.user;
