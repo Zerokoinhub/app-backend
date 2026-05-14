@@ -175,33 +175,30 @@ const updateUserBalanceByAdmin = async (req, res) => {
 
 const checkAndGiveBonusOnRankChange = async (user) => {
   try {
-
     // Get latest top 10
     const topUsers = await User.find({})
       .sort({ balance: -1 })
       .limit(10)
       .lean();
 
-    const currentRank =
-      topUsers.findIndex(u => u.firebaseUid === user.firebaseUid) + 1;
-
+    const currentRank = topUsers.findIndex(u => u.firebaseUid === user.firebaseUid) + 1;
     const previousRank = user.lastBonusRank || 999;
 
     console.log(`📊 Rank Change: ${previousRank} -> ${currentRank}`);
 
-    // Save latest rank ALWAYS
+    // ✅ ALWAYS update lastBonusRank
     user.lastBonusRank = currentRank;
 
-    // Only top 3 eligible
+    // ✅ Only top 3 eligible
     if (currentRank >= 1 && currentRank <= 3) {
 
-      // Rank improved
-      if (currentRank < previousRank) {
+      // ✅ Rank improved OR first time in top 3
+      if (currentRank < previousRank || previousRank === 999) {
 
-        const bonusAmount =
-          currentRank === 1 ? 20 :
-          currentRank === 2 ? 10 : 5;
+        const bonusAmount = currentRank === 1 ? 20 :
+                           currentRank === 2 ? 10 : 5;
 
+        // ✅ CREATE PENDING BONUS - YAHI MISSING THA!
         user.pendingBonus = {
           amount: bonusAmount,
           rank: currentRank,
@@ -213,31 +210,21 @@ const checkAndGiveBonusOnRankChange = async (user) => {
 
         await user.save();
 
-        await sendBonusNotification(
-          user,
-          currentRank,
-          bonusAmount
-        );
+        console.log(`✅ Pending bonus created: +${bonusAmount} for rank ${currentRank}`);
 
-        console.log(`✅ Instant bonus created: +${bonusAmount}`);
+        // Send notification
+        await sendBonusNotification(user, currentRank, bonusAmount);
 
         return true;
       }
 
-      // Rank downgraded but still top 3
-      // Example: 1 -> 3
-      console.log(`ℹ️ Rank downgraded but still top 3`);
-
+      console.log(`ℹ️ Rank same or downgraded, no bonus`);
       await user.save();
-
       return false;
     }
 
-    // Outside top 3
     console.log(`❌ User outside top 3`);
-
     await user.save();
-
     return false;
 
   } catch (error) {
@@ -245,7 +232,6 @@ const checkAndGiveBonusOnRankChange = async (user) => {
     return false;
   }
 };
-
 const claimBonusFromNotification = async (req, res) => {
   try {
     const { uid } = req.user;
