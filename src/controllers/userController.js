@@ -66,33 +66,33 @@ const checkAndGiveBonusOnRankChange = async (firebaseUid) => {
     if (!user) return false;
 
     const currentRank = await getUserRank(firebaseUid);
-    const previousRank = user.lastBonusRank || 999;
+    if (!currentRank) return false;
 
-    console.log("📊 Rank Check:", { currentRank, previousRank, user: user.email });
+    const isTop3 = currentRank >= 1 && currentRank <= 3;
 
-    // Update rank always
-    user.lastBonusRank = currentRank;
+    console.log("📊 Rank Check:", {
+      currentRank,
+      lastBonusRank: user.lastBonusRank,
+      isTop3
+    });
 
-    const rankImproved = currentRank && currentRank <= 3 && currentRank < previousRank;
-
-    if (!rankImproved) {
-      await user.save();
-      return false;
-    }
-
-    const bonusAmount = currentRank === 1 ? 20 : currentRank === 2 ? 10 : currentRank === 3 ? 5 : 0;
-
-    if (bonusAmount <= 0) {
-      await user.save();
-      return false;
-    }
-
-    // Prevent overwrite bug
+    // ✅ IMPORTANT: if already has pending bonus → skip
     if (user.pendingBonus && !user.pendingBonus.claimed) {
-      console.log("⚠️ Pending bonus already exists, skipping");
+      console.log("⚠️ Pending bonus already exists");
+      return false;
+    }
+
+    // ❌ if not in top 3 → no bonus
+    if (!isTop3) {
+      user.lastBonusRank = currentRank;
       await user.save();
       return false;
     }
+
+    const bonusAmount =
+      currentRank === 1 ? 20 :
+      currentRank === 2 ? 10 :
+      currentRank === 3 ? 5 : 0;
 
     user.pendingBonus = {
       amount: bonusAmount,
@@ -100,16 +100,14 @@ const checkAndGiveBonusOnRankChange = async (firebaseUid) => {
       claimed: false,
       earnedAt: new Date()
     };
-user.lastBonusRank = currentRank;
-    user.markModified('pendingBonus');
-    user.lastBonusClaimTime = null;
+
+    user.lastBonusRank = currentRank;
 
     await user.save();
 
-    console.log("✅ Bonus Created:", user.pendingBonus);
-    
-    // Send notification
     await sendBonusNotification(user, currentRank, bonusAmount);
+
+    console.log("✅ BONUS CREATED:", user.pendingBonus);
 
     return true;
 
@@ -118,7 +116,6 @@ user.lastBonusRank = currentRank;
     return false;
   }
 };
-
 /* =========================
    🎁 CLAIM BONUS (FIXED)
 ========================= */
