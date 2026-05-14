@@ -231,7 +231,7 @@ const checkBonusStatus = async (req, res) => {
         hasPendingBonus,
         canClaim,
         bonusAmount: pending?.amount || 0,
-        alreadyClaimed:  user.pendingBonus?.claimed === true
+        alreadyClaimed:  user.pendingBonus?.claimed === true,
         hoursLeft: 0,
         lastBonusRank: user.lastBonusRank,
         rankImproved: hasPendingBonus
