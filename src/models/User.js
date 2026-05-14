@@ -55,16 +55,19 @@ const userSchema = new mongoose.Schema({
   },
   
   // ============ RANK BONUS SYSTEM (FIXED) ============
-  pendingBonus: {
-    type: {
-      amount: { type: Number, default: 0 },
-      rank: { type: Number, default: 0 },
-      claimed: { type: Boolean, default: false },
-      earnedAt: { type: Date },
-      claimedAt: { type: Date }
-    },
-    default: null
+// ============ RANK BONUS SYSTEM (FIXED) ============
+// Replace the entire pendingBonus section with this:
+
+pendingBonus: {
+  type: {
+    amount: Number,
+    rank: Number,
+    claimed: Boolean,
+    earnedAt: Date,
+    claimedAt: Date
   },
+  default: undefined  // ✅ Changed from null to undefined
+},
   
   lastBonusClaimTime: {
     type: Date,
