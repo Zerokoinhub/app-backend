@@ -9,12 +9,16 @@ const notificationService = new NotificationService();
 const generateInviteCode = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let code = '';
-  for (let i = 0; i < 34; i++) {https://github.com/Zerokoinhub/app-backend/edit/main/src/controllers/userController.js
+  for (let i = 0; i < 34; i++) {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return code;
 };
-// Backend mein yeh endpoint add karo
+
+/* =========================
+   🔥 RANK SYSTEM (SINGLE SOURCE)
+========================= */
+
 const getUserRank = async (firebaseUid) => {
   const users = await User.find({})
     .sort({ balance: -1 })
@@ -24,173 +28,72 @@ const getUserRank = async (firebaseUid) => {
   const index = users.findIndex(u => u.firebaseUid === firebaseUid);
   return index === -1 ? null : index + 1;
 };
-const syncUserRank = async (req, res) => {
+
+const sendBonusNotification = async (user, rank, bonusAmount) => {
   try {
-    const { userId } = req.body;
-
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    const topUsers = await User.find({})
-      .sort({ balance: -1 })
-      .limit(100);
-
-    const currentRank =
-      topUsers.findIndex(u => u._id.toString() === userId.toString()) + 1;
-
-    const oldRank = user.lastBonusRank || 999;
-
-    user.lastBonusRank = currentRank;
-
-    if (currentRank > 0 && currentRank < oldRank && currentRank <= 3) {
-      const bonus =
-        currentRank === 1 ? 20 :
-        currentRank === 2 ? 10 :
-        5;
-
-      user.pendingBonus = {
-        amount: bonus,
-        rank: currentRank,
-        claimed: false,
-        earnedAt: new Date()
-      };
-
-      user.markModified('pendingBonus');
-      await user.save();
-
-      return res.json({
-        success: true,
-        bonusCreated: true,
-        bonus
-      });
-    }
-
-    await user.save();
-
-    res.json({ success: true, bonusCreated: false });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-
-
-exports.claimBonusFromNotification = async (req, res) => {
-  try {
-    const { uid } = req.user;
-
-    const user = await User.findOne({ firebaseUid: uid });
-
-    if (!user) {
-      return res.status(404).json({ success: false });
-    }
-
-    console.log("📦 Pending bonus:", user.pendingBonus);
-
-    if (!user.pendingBonus || user.pendingBonus.claimed === true) {
-      return res.status(400).json({
-        success: false,
-        message: "No pending bonus to claim"
-      });
-    }
-
-    const bonus = user.pendingBonus.amount;
-
-    user.balance = (user.balance || 0) + bonus;
-
-    user.pendingBonus.claimed = true;
-    user.pendingBonus.claimedAt = new Date();
-
-    user.lastBonusClaimTime = new Date();
-
-    await user.save();
-
-    return res.json({
-      success: true,
-      message: `+${bonus} coins added`,
-      newBalance: user.balance
-    });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-// Admin panel - Update user balance function
-
-
-const updateUserBalanceByAdmin = async (req, res) => {
-  try {
-    const { userId, newBalance } = req.body;
+    console.log(`📱 Attempting to send notification to ${user.email}`);
     
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ success: false });
+    const activeTokens = user.fcmTokens?.filter(t => t.isActive && t.token) || [];
+    
+    if (activeTokens.length === 0) {
+      console.log(`⚠️ No active FCM tokens for user ${user.email}`);
+      return;
     }
     
-    // Get old rank before update
-    const oldTopUsers = await User.find({}).sort({ balance: -1 }).limit(10).lean();
-    const oldRank = oldTopUsers.findIndex(u => u._id.toString() === userId) + 1;
+    for (const tokenInfo of activeTokens) {
+      const result = await notificationService.sendRankBonusNotificationWithActions(
+        tokenInfo.token,
+        rank,
+        bonusAmount,
+        user.name || 'Miner'
+      );
+      console.log(`📱 Result: ${JSON.stringify(result)}`);
+    }
     
-    // Update balance
-    user.balance = newBalance;
-    await user.save();
-    
-    // ✅ Call the single source of truth function
-    const bonusCreated = await checkAndGiveBonusOnRankChange(user);
-    
-    res.json({ 
-      success: true, 
-      message: 'Balance updated successfully',
-      bonusCreated: bonusCreated
-    });
-    
+    console.log(`✅ Bonus notification sent to ${user.email} for rank ${rank}`);
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error('Failed to send bonus notification:', error);
   }
 };
-// Check bonus status for current user
-// ============ REAL-TIME BONUS ON POSITION CHANGE ============
 
-// Check and give bonus when user's rank changes
-// userController.js - Check this function
+/* =========================
+   🎁 BONUS ENGINE (CORE FIXED LOGIC)
+========================= */
 
 const checkAndGiveBonusOnRankChange = async (firebaseUid) => {
   try {
     const user = await User.findOne({ firebaseUid });
-
     if (!user) return false;
 
     const currentRank = await getUserRank(firebaseUid);
     const previousRank = user.lastBonusRank || 999;
 
-    console.log("📊 Rank Check:", { currentRank, previousRank });
+    console.log("📊 Rank Check:", { currentRank, previousRank, user: user.email });
 
-    // update rank always
+    // Update rank always
     user.lastBonusRank = currentRank;
 
-    const rankImproved =
-      currentRank != null &&
-      currentRank <= 3 &&
-      currentRank < previousRank;
+    const rankImproved = currentRank && currentRank <= 3 && currentRank < previousRank;
 
     if (!rankImproved) {
       await user.save();
       return false;
     }
 
-    const bonusAmount =
-      currentRank === 1 ? 20 :
-      currentRank === 2 ? 10 :
-      currentRank === 3 ? 5 : 0;
+    const bonusAmount = currentRank === 1 ? 20 : currentRank === 2 ? 10 : currentRank === 3 ? 5 : 0;
 
     if (bonusAmount <= 0) {
       await user.save();
       return false;
     }
 
-    // ✅ CREATE PENDING BONUS (FIXED)
+    // Prevent overwrite bug
+    if (user.pendingBonus && !user.pendingBonus.claimed) {
+      console.log("⚠️ Pending bonus already exists, skipping");
+      await user.save();
+      return false;
+    }
+
     user.pendingBonus = {
       amount: bonusAmount,
       rank: currentRank,
@@ -199,76 +102,74 @@ const checkAndGiveBonusOnRankChange = async (firebaseUid) => {
     };
 
     user.markModified('pendingBonus');
-
     user.lastBonusClaimTime = null;
 
     await user.save();
 
-    console.log("✅ Pending bonus created:", user.pendingBonus);
+    console.log("✅ Bonus Created:", user.pendingBonus);
+    
+    // Send notification
+    await sendBonusNotification(user, currentRank, bonusAmount);
 
     return true;
 
   } catch (err) {
-    console.error("❌ Bonus engine error:", err);
+    console.error("❌ Bonus Error:", err);
     return false;
   }
 };
+
+/* =========================
+   🎁 CLAIM BONUS (FIXED)
+========================= */
+
 const claimBonusFromNotification = async (req, res) => {
   try {
     const { uid } = req.user;
+
     const user = await User.findOne({ firebaseUid: uid });
-    
     if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
-    
+
     if (!user.pendingBonus || user.pendingBonus.claimed) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'No pending bonus to claim' 
+      return res.status(400).json({
+        success: false,
+        message: "No pending bonus"
       });
     }
-    
-    const bonusAmount = user.pendingBonus.amount;
+
+    const bonus = user.pendingBonus.amount;
     const rank = user.pendingBonus.rank;
-    
-    // ✅ Add balance
-    user.balance = (user.balance || 0) + bonusAmount;
-    
-    // ✅ Mark as claimed
+
+    user.balance = (user.balance || 0) + bonus;
+
     user.pendingBonus.claimed = true;
     user.pendingBonus.claimedAt = new Date();
     user.lastBonusClaimTime = new Date();
     user.lastBonusRank = rank;
-    user.lastBonusAmount = bonusAmount;
-    
-    // ✅ Set next claim time (24 hours from now)
-    user.bonusTimer = {
-      lastClaimTime: new Date(),
-      nextClaimTime: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      autoBonusGiven: false,
-      pendingBonus: false
-    };
-    
+    user.lastBonusAmount = bonus;
+
     await user.save();
-    
-    console.log(`✅ Bonus claimed: ${bonusAmount} coins added to ${user.email}, new balance: ${user.balance}`);
-    
-    res.json({
+
+    console.log(`✅ Bonus claimed: +${bonus} coins to ${user.email}, new balance: ${user.balance}`);
+
+    return res.json({
       success: true,
-      message: `You claimed ${bonusAmount} coins!`,
+      message: `+${bonus} coins added`,
       data: {
-        bonusAmount: bonusAmount,
+        bonusAmount: bonus,
         rank: rank,
         newBalance: user.balance
       }
     });
-    
-  } catch (error) {
-    console.error('Error claiming bonus:', error);
-    res.status(500).json({ success: false, error: error.message });
+
+  } catch (err) {
+    console.error('Claim error:', err);
+    res.status(500).json({ error: err.message });
   }
 };
+
 const cancelBonusFromNotification = async (req, res) => {
   try {
     const { uid } = req.user;
@@ -285,11 +186,6 @@ const cancelBonusFromNotification = async (req, res) => {
       });
     }
     
-    const bonusAmount = user.pendingBonus.amount;
-    
-    // ✅ DON'T subtract from balance (kyunki balance me add nahi kiya tha)
-    // user.balance -= bonusAmount; // ❌ REMOVE THIS LINE
-    
     user.pendingBonus = null;
     await user.save();
     
@@ -297,7 +193,6 @@ const cancelBonusFromNotification = async (req, res) => {
       success: true,
       message: 'Bonus cancelled',
       data: {
-        removedAmount: bonusAmount,
         newBalance: user.balance
       }
     });
@@ -307,45 +202,16 @@ const cancelBonusFromNotification = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-// Update this function to trigger bonus check on balance change
-const updateUserBalance = async (req, res) => {
-  try {
-    const { uid } = req.user;
-    const { amount } = req.body;
-    
-    if (typeof amount !== 'number') {
-      return res.status(400).json({ message: 'Amount must be a number' });
-    }
-    
-    const user = await User.findOne({ firebaseUid: uid });
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    
-    const oldBalance = user.balance;
-    user.balance += amount;
-    await user.save();
-    
-    // ✅ Check if rank changed and give bonus
-    await checkAndGiveBonusOnRankChange(user, oldBalance, user.balance);
-    
-    res.status(200).json({
-      message: 'User balance updated successfully',
-      newBalance: user.balance,
-    });
-    
-  } catch (error) {
-    console.error('Update user balance error:', error.message);
-    res.status(500).json({ message: 'Error updating user balance', error: error.message });
-  }
-};
-// Admin panel mein yeh function use karo
+
+/* =========================
+   📊 BONUS STATUS CHECK
+========================= */
+
 const checkBonusStatus = async (req, res) => {
   try {
     const { uid } = req.user;
 
     const user = await User.findOne({ firebaseUid: uid });
-
     if (!user) {
       return res.status(404).json({ success: false });
     }
@@ -354,137 +220,74 @@ const checkBonusStatus = async (req, res) => {
     const pending = user.pendingBonus;
 
     const isInTop3 = rank >= 1 && rank <= 3;
-
     const hasPendingBonus = pending && pending.claimed === false;
-
     const canClaim = isInTop3 && hasPendingBonus;
 
-    return res.json({
+    res.json({
       success: true,
       data: {
-        rank,
+        rank: rank || 0,
         isInTop3,
         hasPendingBonus,
         canClaim,
         bonusAmount: pending?.amount || 0,
-        rankImproved: false
+        alreadyClaimed: !hasPendingBonus && isInTop3,
+        hoursLeft: 0,
+        lastBonusRank: user.lastBonusRank,
+        rankImproved: hasPendingBonus
       }
     });
 
   } catch (err) {
+    console.error('checkBonusStatus error:', err);
     res.status(500).json({ error: err.message });
   }
 };
-const claimDailyBonus = async (req, res) => {
 
+/* =========================
+   💰 UPDATE BALANCE (FIXED)
+========================= */
+
+const updateUserBalance = async (req, res) => {
   try {
-
     const { uid } = req.user;
+    const { amount } = req.body;
 
-    const user = await User.findOne({
-      firebaseUid: uid
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+    if (typeof amount !== "number") {
+      return res.status(400).json({ message: "Amount must be number" });
     }
 
-    // Get latest rank
-    const topUsers = await User.find({})
-      .sort({ balance: -1 })
-      .limit(10)
-      .lean();
+    const user = await User.findOne({ firebaseUid: uid });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    const currentRank =
-      topUsers.findIndex(
-        u => u.firebaseUid === uid
-      ) + 1;
-
-    // Only top 3
-    if (currentRank < 1 || currentRank > 3) {
-
-      return res.json({
-        success: false,
-        message: 'You are not in top 3'
-      });
-    }
-
-    // Check timer
-    const now = new Date();
-
-    if (user.lastBonusClaimTime) {
-
-      const diff =
-        now - new Date(user.lastBonusClaimTime);
-
-      const hours =
-        diff / (1000 * 60 * 60);
-
-      if (hours < 24) {
-
-        return res.json({
-          success: false,
-          message:
-            `Wait ${Math.ceil(24 - hours)} hours`
-        });
-      }
-    }
-
-    // Bonus by rank
-    let bonusAmount = 0;
-
-    if (currentRank === 1) bonusAmount = 20;
-    else if (currentRank === 2) bonusAmount = 10;
-    else if (currentRank === 3) bonusAmount = 5;
-
-    // Add balance
-    user.balance =
-      (user.balance || 0) + bonusAmount;
-
-    // Update tracking
-    user.lastBonusClaimTime = now;
-    user.lastBonusRank = currentRank;
-    user.lastBonusAmount = bonusAmount;
-
+    user.balance = (user.balance || 0) + amount;
     await user.save();
+
+    // 🔥 IMPORTANT: pass ONLY UID
+    await checkAndGiveBonusOnRankChange(uid);
 
     res.json({
       success: true,
-      message: `+${bonusAmount} coins added`,
-      data: {
-        rank: currentRank,
-        bonusAmount,
-        newBalance: user.balance
-      }
+      newBalance: user.balance
     });
 
-  } catch (error) {
-
-    console.error('❌ Claim bonus error:', error);
-
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+  } catch (err) {
+    console.error('Update balance error:', err);
+    res.status(500).json({ error: err.message });
   }
 };
-// ============ NEW: Complete Leaderboard Endpoint ============
+
+/* =========================
+   🏆 LEADERBOARD (FIXED)
+========================= */
+
 const getCompleteLeaderboard = async (req, res) => {
   try {
-    console.log('📊 Fetching complete leaderboard...');
-
-    // Get all active users
     const allUsers = await User.find({})
       .select('name email balance photoURL')
       .sort({ balance: -1 })
       .lean();
 
-    console.log(`✅ Total users: ${allUsers.length}`);
-
-    // Format users with proper data
     const formattedUsers = allUsers.map((user, index) => ({
       rank: index + 1,
       id: user._id,
@@ -494,14 +297,13 @@ const getCompleteLeaderboard = async (req, res) => {
       photoURL: user.photoURL || null,
     }));
 
-    // Get top 10
     const top10Users = formattedUsers.slice(0, 10);
 
     res.json({
       success: true,
       data: {
         topUsers: top10Users,
-        allUsers: formattedUsers, // Optional: agar sab chahiye toh
+        allUsers: formattedUsers,
         stats: {
           totalUsers: formattedUsers.length,
           highestBalance: formattedUsers[0]?.balance || 0,
@@ -515,6 +317,122 @@ const getCompleteLeaderboard = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+/* =========================
+   🔧 ADMIN UPDATE BALANCE
+========================= */
+
+const updateUserBalanceByAdmin = async (req, res) => {
+  try {
+    const { userId, newBalance } = req.body;
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false });
+    }
+    
+    user.balance = newBalance;
+    await user.save();
+    
+    const bonusCreated = await checkAndGiveBonusOnRankChange(user.firebaseUid);
+    
+    res.json({ 
+      success: true, 
+      message: 'Balance updated successfully',
+      bonusCreated: bonusCreated
+    });
+    
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/* =========================
+   🔄 SYNC USER RANK
+========================= */
+
+const syncUserRank = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    
+    const bonusCreated = await checkAndGiveBonusOnRankChange(user.firebaseUid);
+    
+    res.json({ success: true, bonusCreated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+const claimDailyBonus = async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const user = await User.findOne({ firebaseUid: uid });
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const currentRank = await getUserRank(uid);
+
+    if (currentRank < 1 || currentRank > 3) {
+      return res.json({ success: false, message: 'You are not in top 3' });
+    }
+
+    const now = new Date();
+
+    if (user.lastBonusClaimTime) {
+      const hours = (now - new Date(user.lastBonusClaimTime)) / (1000 * 60 * 60);
+      if (hours < 24) {
+        return res.json({ success: false, message: `Wait ${Math.ceil(24 - hours)} hours` });
+      }
+    }
+
+    let bonusAmount = 0;
+    if (currentRank === 1) bonusAmount = 20;
+    else if (currentRank === 2) bonusAmount = 10;
+    else if (currentRank === 3) bonusAmount = 5;
+
+    user.balance = (user.balance || 0) + bonusAmount;
+    user.lastBonusClaimTime = now;
+    user.lastBonusRank = currentRank;
+    user.lastBonusAmount = bonusAmount;
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: `+${bonusAmount} coins added`,
+      data: { rank: currentRank, bonusAmount, newBalance: user.balance }
+    });
+
+  } catch (error) {
+    console.error('❌ Claim bonus error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const triggerRankBonusNotification = async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const bonusCreated = await checkAndGiveBonusOnRankChange(uid);
+    
+    res.json({ 
+      success: bonusCreated, 
+      message: bonusCreated ? 'Bonus created' : 'No bonus created'
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/* =========================
+   📤 EXPORTS (CLEAN)
+========================= */
+
+// Auth & User
 exports.registerUser = async (req, res) => {
   try {
     let inviteCode = generateInviteCode();
@@ -528,64 +446,20 @@ exports.registerUser = async (req, res) => {
     res.status(500).json({ message: 'Error registering user' });
   }
 };
-// ============ LEADERBOARD FUNCTIONS ============
-exports.getInviteDetails = async (req, res) => {
-  try {
-    const { inviteCode } = req.params;
-    const user = await User.findOne({ inviteCode });
-    if (!user) return res.status(404).json({ message: 'Invite not found' });
-    res.json({ inviteCode, recentAmount: user.recentAmount });
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching invite details' });
-  }
-};
-
-exports.processReferral = async (req, res) => {
-  try {
-    const { inviteCode, referredBy } = req.body;
-    console.log('Processing referral:', { inviteCode, referredBy });
-
-    const referrer = await User.findOne({ inviteCode: referredBy });
-    if (!referrer) return res.status(400).json({ message: 'Invalid referrer invite code' });
-
-    let newInviteCode = generateInviteCode();
-    while (await User.findOne({ inviteCode: newInviteCode })) {
-      newInviteCode = generateInviteCode();
-    }
-
-    const newUser = new User({ inviteCode: newInviteCode, referredBy });
-    await newUser.save();
-
-    referrer.recentAmount += 50;
-    referrer.balance = (referrer.balance || 0) + 50;
-    await referrer.save();
-
-    res.status(200).json({ message: 'Referral processed', recentAmount: referrer.recentAmount });
-  } catch (error) {
-    console.error('Referral error:', error.message);
-    res.status(500).json({ message: 'Error processing referral', error: error.message });
-  }
-};
 
 exports.syncFirebaseUser = async (req, res) => {
   try {
     const { uid, email, name } = req.user;
-    console.log('🔥 Syncing Firebase user:', { uid, email, name });
-
     let user = await User.findOne({ firebaseUid: uid });
-    console.log('🔍 Existing user check result:', user ? 'Found' : 'Not found');
-
     const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
     const geo = geoip.lookup(ip);
     const country = geo ? getName(geo.country) : null;
 
     if (user) {
-      console.log('📝 Updating existing user:', user.inviteCode);
       user.name = name || user.name;
       user.email = email || user.email;
       user.country = country;
       await user.save();
-      console.log('✅ User updated successfully');
 
       res.status(200).json({
         message: 'User data updated successfully',
@@ -601,7 +475,6 @@ exports.syncFirebaseUser = async (req, res) => {
         }
       });
     } else {
-      console.log('✨ Creating new user for Firebase UID:', uid);
       let inviteCode = generateInviteCode();
       while (await User.findOne({ inviteCode })) {
         inviteCode = generateInviteCode();
@@ -616,7 +489,6 @@ exports.syncFirebaseUser = async (req, res) => {
       });
 
       await newUser.save();
-      console.log('✅ User created successfully with invite code:', inviteCode);
 
       res.status(201).json({
         message: 'User created successfully',
@@ -641,31 +513,144 @@ exports.syncFirebaseUser = async (req, res) => {
 exports.getUserProfile = async (req, res) => {
   try {
     const { uid } = req.user;
-
     const user = await User.findOne({ firebaseUid: uid });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-
-    res.status(200).json({
-      user: {
-        firebaseUid: user.firebaseUid,
-        name: user.name,
-        email: user.email,
-        inviteCode: user.inviteCode,
-        referredBy: user.referredBy,
-        recentAmount: user.recentAmount,
-        balance: user.balance,
-        walletAddresses: user.walletAddresses,
-        createdAt: user.createdAt
-      }
-    });
+    res.status(200).json({ user });
   } catch (error) {
-    console.error('Get user profile error:', error.message);
     res.status(500).json({ message: 'Error fetching user profile', error: error.message });
   }
 };
 
+exports.updateUserProfile = async (req, res) => {
+  try {
+    const { displayName, photoURL } = req.body;
+    const userId = req.user.uid;
+    const userEmail = req.user.email;
+
+    if (!displayName || displayName.trim() === '') {
+      return res.status(400).json({ success: false, message: "Display name is required" });
+    }
+
+    let user = await User.findOne({ firebaseUid: userId });
+    
+    if (!user) {
+      let inviteCode = generateInviteCode();
+      while (await User.findOne({ inviteCode })) {
+        inviteCode = generateInviteCode();
+      }
+
+      user = new User({
+        firebaseUid: userId,
+        name: displayName.trim(),
+        email: userEmail,
+        inviteCode: inviteCode,
+        photoURL: photoURL || null,
+        balance: 0,
+        calculatorUsage: 0,
+        sessionsCompleted: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      await user.save();
+    } else {
+      user.name = displayName.trim();
+      if (photoURL !== undefined) user.photoURL = photoURL;
+      user.updatedAt = new Date();
+      await user.save();
+    }
+
+    res.status(200).json({ success: true, message: "Profile updated successfully" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Internal server error", error: error.message });
+  }
+};
+
+exports.uploadProfilePicture = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
+
+    const userId = req.user.uid;
+    const photoURL = req.file.path;
+    let user = await User.findOne({ firebaseUid: userId });
+
+    if (!user) {
+      user = new User({
+        firebaseUid: userId,
+        email: req.user.email || '',
+        name: req.user.name || '',
+        photoURL: photoURL,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    } else {
+      user.photoURL = photoURL;
+      user.updatedAt = new Date();
+    }
+
+    await user.save();
+
+    res.json({ success: true, message: 'Profile picture uploaded successfully', photoURL });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to upload profile picture' });
+  }
+};
+
+exports.getUserDetails = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const user = await User.findOne({ firebaseUid: userId });
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    res.json({ success: true, user });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to get user details' });
+  }
+};
+
+// Referral
+exports.getInviteDetails = async (req, res) => {
+  try {
+    const { inviteCode } = req.params;
+    const user = await User.findOne({ inviteCode });
+    if (!user) return res.status(404).json({ message: 'Invite not found' });
+    res.json({ inviteCode, recentAmount: user.recentAmount });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching invite details' });
+  }
+};
+
+exports.processReferral = async (req, res) => {
+  try {
+    const { inviteCode, referredBy } = req.body;
+    const referrer = await User.findOne({ inviteCode: referredBy });
+    if (!referrer) return res.status(400).json({ message: 'Invalid referrer invite code' });
+
+    let newInviteCode = generateInviteCode();
+    while (await User.findOne({ inviteCode: newInviteCode })) {
+      newInviteCode = generateInviteCode();
+    }
+
+    const newUser = new User({ inviteCode: newInviteCode, referredBy });
+    await newUser.save();
+
+    referrer.recentAmount += 50;
+    referrer.balance = (referrer.balance || 0) + 50;
+    await referrer.save();
+
+    res.status(200).json({ message: 'Referral processed', recentAmount: referrer.recentAmount });
+  } catch (error) {
+    console.error('Referral error:', error.message);
+    res.status(500).json({ message: 'Error processing referral', error: error.message });
+  }
+};
+
+// Sessions
 exports.getUserSessions = async (req, res) => {
   try {
     const { uid } = req.user;
@@ -728,10 +713,7 @@ exports.unlockNextSession = async (req, res) => {
     nextSession.unlockedAt = new Date();
     await user.save();
 
-    res.status(200).json({
-      message: 'Session unlocked successfully',
-      session: nextSession
-    });
+    res.status(200).json({ message: 'Session unlocked successfully', session: nextSession });
   } catch (error) {
     console.error('Unlock session error:', error.message);
     res.status(500).json({ message: 'Error unlocking session', error: error.message });
@@ -790,9 +772,8 @@ exports.completeSession = async (req, res) => {
       nextSessionNumber = sessionNumber + 1;
       const nextSession = user.sessions.find(s => s.sessionNumber === nextSessionNumber);
       if (nextSession) {
-        const countdownDuration = SESSION_INTERVAL;
         nextSession.isLocked = true;
-        nextSession.nextUnlockAt = new Date(Date.now() + countdownDuration);
+        nextSession.nextUnlockAt = new Date(Date.now() + SESSION_INTERVAL);
         nextSession.completedAt = null;
         nextSession.isClaimed = false;
         nextSession.unlockedAt = null;
@@ -800,82 +781,10 @@ exports.completeSession = async (req, res) => {
     }
 
     await user.save();
-
-    const response = {
-      message: 'Session completed successfully',
-      session: session,
-      nextSession: user.sessions.find(s => s.sessionNumber === nextSessionNumber),
-      sessionsReset: parseInt(sessionNumber) === 4
-    };
-
-    console.log(`Session ${sessionNumber} completed. Response:`, JSON.stringify(response, null, 2));
-
-    res.status(200).json(response);
+    res.status(200).json({ message: 'Session completed successfully', session: session });
   } catch (error) {
     console.error('Complete session error:', error.message);
     res.status(500).json({ message: 'Error completing session', error: error.message });
-  }
-};
-
-exports.updateWalletAddress = async (req, res) => {
-  try {
-    const { uid } = req.user;
-    const { walletType, walletAddress } = req.body;
-
-    console.log(`🔄 Updating wallet address for user ${uid}:`, { walletType, walletAddress });
-
-    if (!walletType || walletAddress === undefined || walletAddress === null) {
-      console.log('❌ Backend: Validation failed - missing required fields');
-      return res.status(400).json({ message: 'walletType and walletAddress are required' });
-    }
-
-    if (walletAddress !== '' && (!walletAddress.startsWith('0x') || walletAddress.length !== 42)) {
-      return res.status(400).json({ message: 'Invalid wallet address format. Must be a valid Ethereum address (0x...)' });
-    }
-
-    const user = await User.findOne({ firebaseUid: uid });
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    if (walletType === 'metamask') {
-      user.walletAddresses.metamask = walletAddress;
-      user.walletStatus = walletAddress === '' ? 'Not Connected' : 'Connected';
-    } else if (walletType === 'trustWallet') {
-      user.walletAddresses.trustWallet = walletAddress;
-      user.walletStatus = walletAddress === '' ? 'Not Connected' : 'Connected';
-    } else {
-      return res.status(400).json({ message: 'Invalid walletType' });
-    }
-
-    await user.save();
-
-    console.log(`✅ Wallet address updated successfully for user ${uid}`);
-
-    res.status(200).json({
-      message: 'Wallet address updated successfully',
-      walletAddresses: user.walletAddresses
-    });
-  } catch (error) {
-    console.error('Update wallet address error:', error.message);
-    res.status(500).json({ message: 'Error updating wallet address', error: error.message });
-  }
-};
-
-exports.getUserCount = async (req, res) => {
-  try {
-    const count = await User.countDocuments();
-    res.status(200).json({ 
-      success: true,      // ✅ ADDED!
-      count: count 
-    });
-  } catch (error) {
-    console.error('Get user count error:', error.message);
-    res.status(500).json({ 
-      success: false,     // ✅ ADDED!
-      message: 'Error getting user count', 
-      error: error.message 
-    });
   }
 };
 
@@ -896,14 +805,58 @@ exports.resetUserSessions = async (req, res) => {
     });
 
     await user.save();
-
-    res.status(200).json({
-      message: 'Sessions reset successfully',
-      sessions: user.sessions
-    });
+    res.status(200).json({ message: 'Sessions reset successfully', sessions: user.sessions });
   } catch (error) {
     console.error('Reset sessions error:', error.message);
     res.status(500).json({ message: 'Error resetting sessions', error: error.message });
+  }
+};
+
+// Wallet
+exports.updateWalletAddress = async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const { walletType, walletAddress } = req.body;
+
+    if (!walletType || walletAddress === undefined || walletAddress === null) {
+      return res.status(400).json({ message: 'walletType and walletAddress are required' });
+    }
+
+    if (walletAddress !== '' && (!walletAddress.startsWith('0x') || walletAddress.length !== 42)) {
+      return res.status(400).json({ message: 'Invalid wallet address format' });
+    }
+
+    const user = await User.findOne({ firebaseUid: uid });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (walletType === 'metamask') {
+      user.walletAddresses.metamask = walletAddress;
+      user.walletStatus = walletAddress === '' ? 'Not Connected' : 'Connected';
+    } else if (walletType === 'trustWallet') {
+      user.walletAddresses.trustWallet = walletAddress;
+      user.walletStatus = walletAddress === '' ? 'Not Connected' : 'Connected';
+    } else {
+      return res.status(400).json({ message: 'Invalid walletType' });
+    }
+
+    await user.save();
+    res.status(200).json({ message: 'Wallet address updated successfully', walletAddresses: user.walletAddresses });
+  } catch (error) {
+    console.error('Update wallet address error:', error.message);
+    res.status(500).json({ message: 'Error updating wallet address', error: error.message });
+  }
+};
+
+// Utility
+exports.getUserCount = async (req, res) => {
+  try {
+    const count = await User.countDocuments();
+    res.status(200).json({ success: true, count });
+  } catch (error) {
+    console.error('Get user count error:', error.message);
+    res.status(500).json({ success: false, message: 'Error getting user count', error: error.message });
   }
 };
 
@@ -923,33 +876,7 @@ exports.incrementCalculatorUsage = async (req, res) => {
   }
 };
 
-exports.updateUserBalance = async (req, res) => {
-  try {
-    const { uid } = req.user;
-    const { amount } = req.body;
-
-    if (typeof amount !== "number") {
-      return res.status(400).json({ message: "Amount must be number" });
-    }
-
-    const user = await User.findOne({ firebaseUid: uid });
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    user.balance = (user.balance || 0) + amount;
-    await user.save();
-
-    // 🔥 IMPORTANT: pass ONLY UID
-    await checkAndGiveBonusOnRankChange(uid);
-
-    res.json({
-      success: true,
-      newBalance: user.balance
-    });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
+// Notifications
 exports.updateFCMToken = async (req, res) => {
   try {
     const { uid } = req.user;
@@ -997,11 +924,7 @@ exports.updateFCMToken = async (req, res) => {
     }
 
     await user.save();
-
-    res.status(200).json({
-      message: 'FCM token updated successfully',
-      tokenValid: validation.valid
-    });
+    res.status(200).json({ message: 'FCM token updated successfully', tokenValid: validation.valid });
   } catch (error) {
     console.error('Update FCM token error:', error.message);
     res.status(500).json({ message: 'Error updating FCM token', error: error.message });
@@ -1028,10 +951,7 @@ exports.removeFCMToken = async (req, res) => {
 
     user.fcmTokens = user.fcmTokens.filter(t => t.token !== fcmToken);
     await user.save();
-
-    res.status(200).json({
-      message: 'FCM token removed successfully'
-    });
+    res.status(200).json({ message: 'FCM token removed successfully' });
   } catch (error) {
     console.error('Remove FCM token error:', error.message);
     res.status(500).json({ message: 'Error removing FCM token', error: error.message });
@@ -1049,37 +969,25 @@ exports.updateNotificationSettings = async (req, res) => {
     }
 
     if (!user.notificationSettings) {
-      user.notificationSettings = {
-        sessionUnlocked: true,
-        pushEnabled: true
-      };
+      user.notificationSettings = { sessionUnlocked: true, pushEnabled: true };
     }
 
-    if (typeof sessionUnlocked === 'boolean') {
-      user.notificationSettings.sessionUnlocked = sessionUnlocked;
-    }
-    if (typeof pushEnabled === 'boolean') {
-      user.notificationSettings.pushEnabled = pushEnabled;
-    }
+    if (typeof sessionUnlocked === 'boolean') user.notificationSettings.sessionUnlocked = sessionUnlocked;
+    if (typeof pushEnabled === 'boolean') user.notificationSettings.pushEnabled = pushEnabled;
 
     await user.save();
-
-    res.status(200).json({
-      message: 'Notification settings updated successfully',
-      notificationSettings: user.notificationSettings
-    });
+    res.status(200).json({ message: 'Notification settings updated successfully', notificationSettings: user.notificationSettings });
   } catch (error) {
     console.error('Update notification settings error:', error.message);
     res.status(500).json({ message: 'Error updating notification settings', error: error.message });
   }
 };
-// ✅ FIXED uploadScreenshots function
+
+// Screenshots
 const { uploadToFirebase } = require('../config/cloudinary');
 
 exports.uploadScreenshots = async (req, res) => {
   try {
-    console.log('📸 Upload screenshots request received');
-    
     const { uid } = req.user;
     if (!uid) {
       return res.status(401).json({ message: 'Unauthorized' });
@@ -1094,12 +1002,10 @@ exports.uploadScreenshots = async (req, res) => {
       return res.status(400).json({ message: 'No files uploaded' });
     }
     
-    // ✅ Firebase Storage se upload
     const urls = [];
     for (const file of req.files) {
       const url = await uploadToFirebase(file, uid);
       urls.push(url);
-      console.log('📸 Uploaded to Firebase:', url);
     }
     
     if (!user.screenshots) user.screenshots = [];
@@ -1107,280 +1013,22 @@ exports.uploadScreenshots = async (req, res) => {
     user.updatedAt = new Date();
     await user.save();
     
-    res.status(200).json({
-      success: true,
-      message: `${urls.length} screenshot(s) uploaded successfully`,
-      urls: urls,
-      screenshots: user.screenshots
-    });
-    
+    res.status(200).json({ success: true, message: `${urls.length} screenshot(s) uploaded successfully`, urls, screenshots: user.screenshots });
   } catch (error) {
     console.error('Upload error:', error);
-    res.status(500).json({ 
-      success: false,
-      message: 'Error uploading screenshots', 
-      error: error.message 
-    });
-  }
-};
-exports.updateUserProfile = async (req, res) => {
-  try {
-    console.log("📝 Profile update request received");
-    console.log("   User ID:", req.user.uid);
-    console.log("   Request body:", req.body);
-
-    const { displayName, photoURL } = req.body;
-    const userId = req.user.uid;
-    const userEmail = req.user.email;
-
-    if (!displayName || displayName.trim() === '') {
-      return res.status(400).json({
-        success: false,
-        message: "Display name is required"
-      });
-    }
-
-    const user = await User.findOne({ firebaseUid: userId });
-    
-    if (!user) {
-      console.log("⚠️ User not found, creating new user...");
-      
-      let inviteCode = generateInviteCode();
-      while (await User.findOne({ inviteCode })) {
-        inviteCode = generateInviteCode();
-      }
-
-      const newUser = new User({
-        firebaseUid: userId,
-        name: displayName.trim(),
-        email: userEmail,
-        inviteCode: inviteCode,
-        photoURL: photoURL || null,
-        balance: 0,
-        calculatorUsage: 0,
-        sessionsCompleted: [],
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
-
-      await newUser.save();
-      console.log("✅ New user created with invite code:", inviteCode);
-
-      return res.status(200).json({
-        success: true,
-        message: "Profile created successfully",
-        data: {
-          displayName: displayName.trim(),
-          photoURL: photoURL || null,
-          updatedAt: new Date().toISOString()
-        }
-      });
-    }
-
-    user.name = displayName.trim();
-    if (photoURL !== undefined) {
-      user.photoURL = photoURL;
-    }
-    user.updatedAt = new Date();
-
-    await user.save();
-    console.log("✅ User profile updated successfully");
-
-    res.status(200).json({
-      success: true,
-      message: "Profile updated successfully",
-      data: {
-        displayName: displayName.trim(),
-        photoURL: user.photoURL,
-        updatedAt: user.updatedAt.toISOString()
-      }
-    });
-
-  } catch (error) {
-    console.error("❌ Error updating profile:", error);
-    console.error("Stack trace:", error.stack);
-    
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error uploading screenshots', error: error.message });
   }
 };
 
-// ✅ SINGLE uploadProfilePicture function - NO DUPLICATES!
-exports.uploadProfilePicture = async (req, res) => {
-  try {
-    console.log('📸 Profile picture upload request received');
-    
-    if (!req.file) {
-      console.log('❌ No file uploaded');
-      return res.status(400).json({ 
-        success: false, 
-        error: 'No file uploaded' 
-      });
-    }
-
-    const userId = req.user.uid;
-    console.log('   User ID:', userId);
-    console.log('   Cloudinary file:', req.file);
-
-    // Cloudinary returns secure_url in path property
-    const photoURL = req.file.path;
-    
-    console.log('   Photo URL from Cloudinary:', photoURL);
-
-    let user = await User.findOne({ firebaseUid: userId });
-
-    if (!user) {
-      console.log('   Creating new user entry...');
-      user = new User({
-        firebaseUid: userId,
-        email: req.user.email || '',
-        name: req.user.name || '',
-        photoURL: photoURL,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
-    } else {
-      console.log('   Updating existing user:', user.email);
-      user.photoURL = photoURL;
-      user.updatedAt = new Date();
-    }
-
-    await user.save();
-    console.log('   ✅ User saved successfully');
-
-    res.json({
-      success: true,
-      message: 'Profile picture uploaded successfully',
-      photoURL: photoURL
-    });
-
-  } catch (error) {
-    console.error('❌ Error in uploadProfilePicture:', error);
-    console.error('   Stack:', error.stack);
-    
-    res.status(500).json({ 
-      success: false, 
-      error: 'Failed to upload profile picture',
-      details: process.env.NODE_ENV === 'production' ? undefined : error.message
-    });
-  }
-};
-
-exports.getUserDetails = async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const user = await User.findOne({ firebaseUid: userId });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      user: {
-        firebaseUid: user.firebaseUid,
-        name: user.name,
-        email: user.email,
-        photoURL: user.photoURL,
-        inviteCode: user.inviteCode,
-        balance: user.balance,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt
-      }
-    });
-  } catch (error) {
-    console.error('❌ Error getting user details:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get user details'
-    });
-  }
-};
-// userController.js me add karein - END me
-
-// Manual trigger for rank bonus notification
-const triggerRankBonusNotification = async (req, res) => {
-  try {
-    const { uid } = req.user;
-    console.log(`🔔 Manual trigger for user: ${uid}`);
-    
-    const user = await User.findOne({ firebaseUid: uid });
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-    
-    // Get current rank
-    const topUsers = await User.find({}).sort({ balance: -1 }).limit(3).lean();
-    const userRank = topUsers.findIndex(u => u.firebaseUid === uid) + 1;
-    
-    console.log(`   User rank: ${userRank}`);
-    
-    if (userRank >= 1 && userRank <= 3) {
-      const bonusAmount = userRank === 1 ? 20 : userRank === 2 ? 10 : 5;
-      
-      // Check if already claimed today
-      const now = new Date();
-      const lastClaimTime = user.lastBonusClaimTime;
-      let alreadyClaimed = false;
-      
-      if (lastClaimTime) {
-        const hoursSinceLastClaim = (now - lastClaimTime) / (1000 * 60 * 60);
-        alreadyClaimed = hoursSinceLastClaim < 24;
-      }
-      
-      if (!alreadyClaimed) {
-        // Store pending bonus
-        user.pendingBonus = {
-          amount: bonusAmount,
-          rank: userRank,
-          claimed: false,
-          earnedAt: now
-        };
-        await user.save();
-        
-        // Send notification
-        await sendBonusNotification(user, userRank, bonusAmount);
-        
-        return res.json({ 
-          success: true, 
-          message: `Notification sent for rank ${userRank}, +${bonusAmount} coins`,
-          rank: userRank,
-          bonusAmount: bonusAmount
-        });
-      } else {
-        return res.json({ 
-          success: false, 
-          message: 'Already claimed today. Try again after 24 hours.'
-        });
-      }
-    } else {
-      return res.json({ 
-        success: false, 
-        message: `User not in top 3. Current rank: ${userRank}`
-      });
-    }
-  } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// Export
-exports.triggerRankBonusNotification = triggerRankBonusNotification;
-// Export missing functions
-exports.getCompleteLeaderboard = getCompleteLeaderboard;
-// Add this at the VERY END of userController.js
-exports.checkBonusStatus = checkBonusStatus;
-exports.claimDailyBonus = claimDailyBonus;
-// Add these missing exports at the VERY END
+// Main exports
+exports.getUserRank = getUserRank;
+exports.checkAndGiveBonusOnRankChange = checkAndGiveBonusOnRankChange;
 exports.claimBonusFromNotification = claimBonusFromNotification;
-exports.cancelBonusFromNotification = cancelBonusFromNotification; 
-// userController.js - Sabse end mein add karein
+exports.cancelBonusFromNotification = cancelBonusFromNotification;
+exports.checkBonusStatus = checkBonusStatus;
+exports.updateUserBalance = updateUserBalance;
 exports.updateUserBalanceByAdmin = updateUserBalanceByAdmin;
+exports.getCompleteLeaderboard = getCompleteLeaderboard;
 exports.syncUserRank = syncUserRank;
+exports.claimDailyBonus = claimDailyBonus;
+exports.triggerRankBonusNotification = triggerRankBonusNotification;
