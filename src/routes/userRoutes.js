@@ -39,6 +39,8 @@ router.post('/trigger-rank-bonus', verifyFirebaseToken, userController.triggerRa
 // ============================================
 // ✅ FORCE PENDING BONUS ROUTE
 // ============================================
+// Add this route in userRoutes.js
+router.post('/sync-rank', verifyFirebaseToken, userController.syncUserRank);
 router.post('/force-pending-bonus', verifyFirebaseToken, async (req, res) => {
   try {
     const { uid } = req.user;
