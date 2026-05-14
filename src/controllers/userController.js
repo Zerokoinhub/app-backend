@@ -114,9 +114,27 @@ const updateUserBalanceByAdmin = async (req, res) => {
     const newRank = newTopUsers.findIndex(u => u._id.toString() === userId) + 1;
     
     // ✅ CORRECT: Check improvement FIRST using previousBonusRank
-    const rankImproved = (previousBonusRank == null && newRank <= 3) ||
-                         (previousBonusRank != null && newRank < previousBonusRank);
-    
+ if (newRank >= 1 && newRank <= 3) {
+
+  const bonusAmount =
+    newRank === 1 ? 20 :
+    newRank === 2 ? 10 :
+    5;
+
+  user.pendingBonus = {
+    amount: bonusAmount,
+    rank: newRank,
+    claimed: false,
+    earnedAt: new Date()
+  };
+
+  user.lastBonusClaimTime = null;
+  user.lastBonusRank = newRank;
+
+  await user.save();
+
+  await sendBonusNotification(user, newRank, bonusAmount);
+}   
     // ✅ THEN update lastBonusRank (only if improved or always? Let's always update)
     user.lastBonusRank = newRank;
     
