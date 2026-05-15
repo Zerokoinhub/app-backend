@@ -59,7 +59,6 @@ const sendBonusNotification = async (user, rank, bonusAmount) => {
 /* =========================
    🎁 BONUS ENGINE (CORE FIXED LOGIC)
 ========================= */
-
 const checkAndGiveBonusOnRankChange = async (firebaseUid) => {
   try {
     const user = await User.findOne({ firebaseUid });
@@ -69,30 +68,46 @@ const checkAndGiveBonusOnRankChange = async (firebaseUid) => {
     if (!currentRank) return false;
 
     const isTop3 = currentRank >= 1 && currentRank <= 3;
+    const previousRank = user.lastBonusRank;
 
     console.log("📊 Rank Check:", {
       currentRank,
-      lastBonusRank: user.lastBonusRank,
-      isTop3
+      previousRank,
+      isTop3,
+      user: user.email
     });
 
-    // ✅ IMPORTANT: if already has pending bonus → skip
+    // ✅ If already has pending bonus → skip
     if (user.pendingBonus && !user.pendingBonus.claimed) {
       console.log("⚠️ Pending bonus already exists");
       return false;
     }
 
-    // ❌ if not in top 3 → no bonus
+    // ❌ If not in top 3 → no bonus, just update rank
     if (!isTop3) {
       user.lastBonusRank = currentRank;
       await user.save();
+      console.log("📊 User not in top 3, rank updated to:", currentRank);
       return false;
     }
 
-    const bonusAmount =
-      currentRank === 1 ? 20 :
-      currentRank === 2 ? 10 :
-      currentRank === 3 ? 5 : 0;
+    // ✅ CRITICAL: Check if rank improved
+    // Improvement means: current rank number is LESS than previous rank number
+    // Example: previousRank=3, currentRank=1 → improved (1 < 3)
+    const rankImproved = previousRank === null || currentRank < previousRank;
+    
+    console.log("📊 Rank improved:", rankImproved, `(${previousRank} → ${currentRank})`);
+
+    // ❌ If no improvement, just update rank and return
+    if (!rankImproved) {
+      user.lastBonusRank = currentRank;
+      await user.save();
+      console.log("📊 No rank improvement, skipping bonus");
+      return false;
+    }
+
+    // ✅ Rank improved! Create pending bonus
+    const bonusAmount = currentRank === 1 ? 20 : currentRank === 2 ? 10 : 5;
 
     user.pendingBonus = {
       amount: bonusAmount,
@@ -102,12 +117,15 @@ const checkAndGiveBonusOnRankChange = async (firebaseUid) => {
     };
 
     user.lastBonusRank = currentRank;
+    user.lastBonusClaimTime = null;
 
     await user.save();
 
-    await sendBonusNotification(user, currentRank, bonusAmount);
+    console.log("✅ BONUS CREATED! +" + bonusAmount + " coins for rank " + currentRank);
+    console.log("   Pending bonus:", JSON.stringify(user.pendingBonus));
 
-    console.log("✅ BONUS CREATED:", user.pendingBonus);
+    // Send notification
+    await sendBonusNotification(user, currentRank, bonusAmount);
 
     return true;
 
@@ -115,8 +133,7 @@ const checkAndGiveBonusOnRankChange = async (firebaseUid) => {
     console.error("❌ Bonus Error:", err);
     return false;
   }
-};
-/* =========================
+};/* =========================
    🎁 CLAIM BONUS (FIXED)
 ========================= */
 
