@@ -454,13 +454,61 @@ const claimDailyBonus = async (req, res) => {
 const triggerRankBonusNotification = async (req, res) => {
   try {
     const { uid } = req.user;
-    const bonusCreated = await checkAndGiveBonusOnRankChange(uid);
+    console.log(`🔔 Manual trigger for user: ${uid}`);
     
-    res.json({ 
-      success: bonusCreated, 
-      message: bonusCreated ? 'Bonus created' : 'No bonus created'
-    });
+    const user = await User.findOne({ firebaseUid: uid });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    
+    // Get current rank
+    const topUsers = await User.find({}).sort({ balance: -1 }).limit(3).lean();
+    const userRank = topUsers.findIndex(u => u.firebaseUid === uid) + 1;
+    const previousBonusRank = user.lastBonusRank;
+    
+    console.log(`   User rank: ${userRank}`);
+    console.log(`   Previous bonus rank: ${previousBonusRank}`);
+    
+    // ✅ Check if rank improved
+    const rankImproved = previousBonusRank === null || userRank < previousBonusRank;
+    
+    if (userRank >= 1 && userRank <= 3 && rankImproved) {
+      const bonusAmount = userRank === 1 ? 20 : userRank === 2 ? 10 : 5;
+      
+      // Store pending bonus
+      user.pendingBonus = {
+        amount: bonusAmount,
+        rank: userRank,
+        claimed: false,
+        earnedAt: new Date()
+      };
+      
+      user.lastBonusClaimTime = null;
+      user.lastBonusRank = userRank;
+      user.markModified('pendingBonus');
+      
+      await user.save();
+      
+      console.log(`✅ Pending bonus created: +${bonusAmount} coins for rank ${userRank}`);
+      
+      // Send notification
+      await sendBonusNotification(user, userRank, bonusAmount);
+      
+      return res.json({ 
+        success: true, 
+        message: `Bonus created for rank ${userRank}, +${bonusAmount} coins`,
+        rank: userRank,
+        bonusAmount: bonusAmount
+      });
+    } else {
+      console.log(`❌ No bonus created - Rank: ${userRank}, Improved: ${rankImproved}`);
+      return res.json({ 
+        success: false, 
+        message: `No bonus created. Rank: ${userRank}, Previous: ${previousBonusRank}` 
+      });
+    }
   } catch (error) {
+    console.error('Error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
