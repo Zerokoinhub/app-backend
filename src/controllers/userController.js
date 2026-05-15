@@ -450,7 +450,6 @@ const claimDailyBonus = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 const triggerRankBonusNotification = async (req, res) => {
   try {
     const { uid } = req.user;
@@ -461,9 +460,11 @@ const triggerRankBonusNotification = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
     
-    // Get current rank
-    const topUsers = await User.find({}).sort({ balance: -1 }).limit(3).lean();
+    // ✅ Get current rank from leaderboard (fresh calculation)
+    const topUsers = await User.find({}).sort({ balance: -1 }).limit(10).lean();
     const userRank = topUsers.findIndex(u => u.firebaseUid === uid) + 1;
+    
+    // ✅ Use stored lastBonusRank
     const previousBonusRank = user.lastBonusRank;
     
     console.log(`   User rank: ${userRank}`);
@@ -475,7 +476,6 @@ const triggerRankBonusNotification = async (req, res) => {
     if (userRank >= 1 && userRank <= 3 && rankImproved) {
       const bonusAmount = userRank === 1 ? 20 : userRank === 2 ? 10 : 5;
       
-      // Store pending bonus
       user.pendingBonus = {
         amount: bonusAmount,
         rank: userRank,
@@ -491,7 +491,6 @@ const triggerRankBonusNotification = async (req, res) => {
       
       console.log(`✅ Pending bonus created: +${bonusAmount} coins for rank ${userRank}`);
       
-      // Send notification
       await sendBonusNotification(user, userRank, bonusAmount);
       
       return res.json({ 
@@ -501,7 +500,7 @@ const triggerRankBonusNotification = async (req, res) => {
         bonusAmount: bonusAmount
       });
     } else {
-      console.log(`❌ No bonus created - Rank: ${userRank}, Improved: ${rankImproved}`);
+      console.log(`❌ No bonus created - Rank: ${userRank}, Improved: ${rankImproved}, Previous: ${previousBonusRank}`);
       return res.json({ 
         success: false, 
         message: `No bonus created. Rank: ${userRank}, Previous: ${previousBonusRank}` 
@@ -512,7 +511,6 @@ const triggerRankBonusNotification = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 /* =========================
    📤 EXPORTS (CLEAN)
 ========================= */
