@@ -554,12 +554,48 @@ exports.getUserProfile = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    res.status(200).json({ user });
+    
+    // ✅ IMPROVED: Return formatted user with _id
+    res.status(200).json({
+      success: true,
+      user: {
+        _id: user._id,                    // ✅ ADD THIS - MongoDB ID
+        id: user._id,                     // ✅ Alternative ID field
+        firebaseUid: user.firebaseUid,
+        name: user.name,
+        email: user.email,
+        photoURL: user.photoURL,
+        balance: user.balance,
+        recentAmount: user.recentAmount,
+        inviteCode: user.inviteCode,
+        referredBy: user.referredBy,
+        role: user.role,
+        walletAddresses: user.walletAddresses,
+        walletStatus: user.walletStatus,
+        country: user.country,
+        calculatorUsage: user.calculatorUsage,
+        screenshots: user.screenshots,
+        sessions: user.sessions,
+        notificationSettings: user.notificationSettings,
+        fcmTokens: user.fcmTokens,
+        pendingBonus: user.pendingBonus,
+        lastBonusClaimTime: user.lastBonusClaimTime,
+        lastBonusRank: user.lastBonusRank,
+        lastBonusAmount: user.lastBonusAmount,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        isActive: user.isActive !== false  // Default true if not set
+      }
+    });
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching user profile', error: error.message });
+    console.error('Get user profile error:', error.message);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error fetching user profile', 
+      error: error.message 
+    });
   }
 };
-
 exports.updateUserProfile = async (req, res) => {
   try {
     const { displayName, photoURL } = req.body;
